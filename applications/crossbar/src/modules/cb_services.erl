@@ -146,7 +146,7 @@ resource_exists(_) -> 'true'.
 -spec resource_exists(path_token(), path_token()) -> 'true'.
 resource_exists(?AUDIT, _) -> 'true'.
 
--spec resource_exists(path_token, path_token(), path_token()) -> 'true'.
+-spec resource_exists(path_token(), path_token(), path_token()) -> 'true'.
 resource_exists(?AUDIT, ?SUMMARY, _) -> 'true'.
 
 %%------------------------------------------------------------------------------
