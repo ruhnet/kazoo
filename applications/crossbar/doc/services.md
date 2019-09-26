@@ -66,12 +66,12 @@ curl -v -X GET \
 
 Using this API you can a list of services changes (additions/removal/usage) summary per day.
 
-> GET /v2/accounts/{ACCOUNT_ID}/services/audit_summary
+> GET /v2/accounts/{ACCOUNT_ID}/services/audit/summary
 
 ```shell
 curl -v -X GET \
     -H "X-Auth-Token: {AUTH_TOKEN}" \
-    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit_summary
+    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit/summary
 ```
 
 ### Example
@@ -82,7 +82,7 @@ curl -v -X GET \
 ```shell
 curl -v -X GET \
     -H "X-Auth-Token: {AUTH_TOKEN}" \
-    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit_summary?created_from=63721540230&created_to=63722160516
+    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit/summary?created_from=63721540230&created_to=63722160516
 ```
 
 **Response:**
@@ -212,7 +212,7 @@ Using this API you can a list of changes (additions/removal/usage) summary per d
 ```shell
 curl -v -X GET \
     -H "X-Auth-Token: {AUTH_TOKEN}" \
-    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit_summary/{SOURCE_SERVICE}
+    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit/summary/{SOURCE_SERVICE}
 ```
 
 ### Example
@@ -223,7 +223,7 @@ curl -v -X GET \
 ```shell
 curl -v -X GET \
     -H "X-Auth-Token: {AUTH_TOKEN}" \
-    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit_summary/user?created_from=63721540230&created_to=63722160516
+    http://{SERVER}:8000/v2/accounts/{ACCOUNT_ID}/services/audit/summary/user?created_from=63721540230&created_to=63722160516
 ```
 
 **Response:**
