@@ -1065,11 +1065,11 @@ audit_map_from_doc(Doc, Method) ->
 %% @doc create an audit_log for the operation in the reseller modb
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_audit_reseller(cb_context:context()) -> no_return().
+-spec maybe_audit_reseller(cb_context:context()) -> 'error' | 'ok'.
 maybe_audit_reseller(Context) ->
     maybe_audit_reseller(Context, audit_map_from_context(Context)).
 
--spec maybe_audit_reseller(cb_context:context(), map()) -> no_return().
+-spec maybe_audit_reseller(cb_context:context(), map()) -> 'error' | 'ok'.
 maybe_audit_reseller(Context, #{'reseller_id' := ResellerId}=Map) ->
     ResellerMODB = kazoo_modb:get_modb(ResellerId),
     Audit0 = kzd_audit_logs:new(),
