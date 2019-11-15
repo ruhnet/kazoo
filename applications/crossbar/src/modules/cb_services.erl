@@ -268,17 +268,6 @@ validate(Context, ?AUDIT, ?SUMMARY) ->
                   ],
     ViewName = <<"services/day_summary_by_date">>,
     audit_summary(Context, ViewName, ViewOptions);
-%    ViewOptions = [{'group_level', 1}
-%                  ,{'mapper', fun normalize_day_summary_by_date/2}
-%                  ,{'range_start_keymap', fun audit_summary_range_key/1}
-%                  ,{'range_end_keymap', fun audit_summary_range_key/1}
-%                  ],
-%    ViewName = <<"services/day_summary_by_date">>,
-%    Context1 = audit_summary(Context, ViewName, ViewOptions),
-%    case cb_context:resp_status(Context1) of
-%        'success' -> merge_day_summary_by_date_result(Context1);
-%        _ -> Context1
-%    end;
 validate(Context, ?AUDIT, AuditId) ->
     ErrorCause = kz_json:from_list([{<<"cause">>, AuditId}]),
     cb_context:add_system_error('bad_identifier', ErrorCause, Context).
