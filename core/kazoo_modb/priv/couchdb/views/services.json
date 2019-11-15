@@ -52,7 +52,7 @@
                 "      'quantity': doc.usage.quantity || 0,",
                 "      'sum_quantity': true,",
                 "      'unit': doc.usage.unit",
-                "    });",
+                "    };",
                 "  }",
                 "}"
             ],
