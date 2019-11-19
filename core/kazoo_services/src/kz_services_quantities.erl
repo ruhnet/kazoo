@@ -325,7 +325,8 @@ calculate_updates(Services, JObj) ->
     of
         'true' -> [];
         'false' ->
-            Routines = [fun calculate_user_updates/2
+            Routines = [fun calculate_account_updates/2
+                       ,fun calculate_user_updates/2
                        ,fun calculate_device_updates/2
                        ,fun calculate_limits_updates/2
                        ,fun calculate_whitelabel_updates/2
@@ -379,6 +380,16 @@ substitute_values(Services, Updates) ->
               end
              ,Updates
              ).
+
+
+-spec calculate_account_updates(kz_json:object(), kz_term:proplist()) -> kz_term:proplist().
+calculate_account_updates(JObj, Updates) ->
+    case kz_doc:type(JObj) =:= <<"user">> of
+        'false' -> Updates;
+        'true' ->
+            Key = [<<"accounts">>, <<"account">>],
+            [{Key, 1} | Updates]
+    end.
 
 -spec calculate_user_updates(kz_json:object(), kz_term:proplist()) -> kz_term:proplist().
 calculate_user_updates(JObj, Updates) ->
