@@ -409,7 +409,6 @@ delete(Context, Account) ->
                                                      ,cb_context:auth_token(Context)
                                                      ),
             _ = cb_mobile_manager:delete_account(Context1),
-            maybe_audit_reseller(Context1),
             Context1;
         {'error', Errors} when is_list(Errors) ->
             lists:foldl(fun({'error', Msg, Code}, C) ->
@@ -1025,121 +1024,8 @@ after_create(Context, AccountDoc) ->
 
     _ = crossbar_bindings:map(<<"account.created">>, Context1),
     lager:debug("alerted listeners of new account"),
-    maybe_audit_reseller(Context1),
     maybe_notify_new_account(Context1),
     Context1.
-
-
-%%------------------------------------------------------------------------------
-%% @doc extract context fields into an audit map
-%% @end
-%%------------------------------------------------------------------------------
--spec audit_map_from_context(cb_context:context()) -> map().
-audit_map_from_context(Context) ->
-    audit_map_from_context(Context, cb_context:method(Context)).
-
--spec audit_map_from_context(cb_context:context(), kz_term:ne_binary()) -> map().
-audit_map_from_context(Context, ?HTTP_DELETE=Method) ->
-    #{'account_id' => cb_context:account_id(Context)
-     ,'account_name' => cb_context:account_name(Context)
-     ,'reseller_id' => cb_context:reseller_id(Context)
-     ,'type' => Method
-     };
-audit_map_from_context(Context, ?HTTP_GET=Method) ->
-    audit_map_from_doc(cb_context:doc(Context), Method);
-audit_map_from_context(Context, ?HTTP_PUT=Method) ->
-    audit_map_from_doc(cb_context:doc(Context), Method).
-
-%%------------------------------------------------------------------------------
-%% @doc extract context doc fields into an audit map
-%% @end
-%%------------------------------------------------------------------------------
--spec audit_map_from_doc(kz_doc:doc(), kz_term:ne_binary()) -> map().
-audit_map_from_doc(Doc, Method) ->
-    AccountId = kzd_accounts:id(Doc),
-    #{'account_id' => AccountId
-     ,'account_name' => kzd_accounts:name(Doc)
-     ,'reseller_id' => kz_services_reseller:find_id(AccountId)
-     ,'type' => Method
-     }.
-
-%%------------------------------------------------------------------------------
-%% @doc create an audit_log for the operation in the reseller modb
-%% @end
-%%------------------------------------------------------------------------------
--spec maybe_audit_reseller(cb_context:context()) -> 'error' | 'ok'.
-maybe_audit_reseller(Context) ->
-    maybe_audit_reseller(Context, audit_map_from_context(Context)).
-
--spec maybe_audit_reseller(cb_context:context(), map()) -> 'error' | 'ok'.
-maybe_audit_reseller(Context, #{'reseller_id' := ResellerId}=Map) ->
-    ResellerMODB = kazoo_modb:get_modb(ResellerId),
-    Audit0 = kzd_audit_logs:new(),
-    Routines = [{fun kzd_audit_logs:set_audit/2, build_audit_log(Map)}
-               ,{fun kzd_audit_logs:set_id/2, kazoo_modb_util:modb_id()}
-               ,{fun kzd_audit_logs:set_authenticating_user_account_id/2, cb_context:auth_account_id(Context)}
-               ,{fun kzd_audit_logs:set_authenticating_user_user_id/2, cb_context:auth_user_id(Context)}
-               ,{fun kzd_audit_logs:set_message/2, audit_message(Map)}
-               ,{fun kz_doc:update_pvt_parameters/2, ResellerMODB}
-               ],
-    AuditLog = lists:foldl(fun ({F, Arg}, Doc) -> F(Doc, Arg) end, Audit0, Routines),
-    _ = maybe_save_reseller_audit(ResellerMODB, AuditLog).
-
-%%------------------------------------------------------------------------------
-%% @doc normalize quantities base on change type
-%% @end
-%%------------------------------------------------------------------------------
--spec modified_quantity(kz_term:ne_binary()) -> kz_term:api_integer().
-modified_quantity(?HTTP_GET) -> 1;
-modified_quantity(?HTTP_PUT) -> 1;
-modified_quantity(?HTTP_DELETE) -> -1.
-
-%%------------------------------------------------------------------------------
-%% @doc save audit_log to reseller modb
-%% @end
-%%------------------------------------------------------------------------------
--spec maybe_save_reseller_audit(kz_term:ne_binary(), kz_doc:doc()) -> 'ok' | 'error'.
-maybe_save_reseller_audit(ResellerMODB, AuditLog) ->
-    case kz_datamgr:save_doc(ResellerMODB, AuditLog) of
-        {'ok', _DBDoc} -> 'ok';
-        _Error ->
-            lager:debug("error saving audit_log"),
-            'error'
-    end.
-
-%%------------------------------------------------------------------------------
-%% @doc entry point to start generating audit_log body
-%% @end
-%%------------------------------------------------------------------------------
--spec build_audit_log(map()) -> kz_json:object().
-build_audit_log(Map) ->
-    kz_json:from_list_recursive([{<<"changes">>, audit_changes_metadata(Map)}
-                                ]).
-%%------------------------------------------------------------------------------
-%% @doc generate audit_log message
-%% @end
-%%------------------------------------------------------------------------------
--spec audit_message(map()) -> kz_term:ne_binary().
-audit_message(#{'account_id' := AccountId, 'account_name' := AccountName, 'type' := Type}=_Map) ->
-    <<"Account ",AccountName/binary," (",AccountId/binary,") has been ",(http_to_action(Type))/binary>>.
-
--spec http_to_action(kz_term:ne_binary()) -> kz_term:ne_binary().
-http_to_action(?HTTP_GET) -> <<"created">>;
-http_to_action(?HTTP_PUT) -> <<"created">>;
-http_to_action(?HTTP_DELETE) -> <<"deleted">>.
-
-%%------------------------------------------------------------------------------
-%% @doc generate audit_log changes metadata
-%% @end
-%%------------------------------------------------------------------------------
--spec audit_changes_metadata(map()) -> kz_json:object().
-audit_changes_metadata(#{'account_id' := AccountId, 'account_name' := AccountName, 'type' := Type}=_Map) ->
-    kz_json:from_list([{<<"account_id">>, AccountId}
-                      ,{<<"account_name">>, AccountName}
-                      ,{<<"timestamp">>, kz_time:current_tstamp()}
-                      ,{<<"type">>, <<"modified">>}
-                      ,{<<"quantity">>, modified_quantity(Type)}
-                      ]).
 
 -spec maybe_notify_new_account(cb_context:context()) -> 'ok'.
 maybe_notify_new_account(Context) ->

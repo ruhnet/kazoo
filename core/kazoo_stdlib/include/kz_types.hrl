@@ -147,6 +147,45 @@
         >>
        ).
 
+-define(MATCH_YODB_SUFFIX_RAW(A, B, Rest, Year)
+       ,<<(A):2/binary, (B):2/binary, (Rest):28/binary
+         ,"-", (Year):4/binary
+        >>
+       ).
+-define(MATCH_YODB_SUFFIX_UNENCODED(A, B, Rest, Year)
+       ,<<"account/", (A):2/binary, "/", (B):2/binary, "/", (Rest):28/binary
+         ,"-", (Year):4/binary
+        >>
+       ).
+-define(MATCH_YODB_SUFFIX_ENCODED(A, B, Rest, Year)
+       ,<<"account%2F", (A):2/binary, "/", (B):2/binary, "/", (Rest):28/binary
+         ,"-", (Year):4/binary
+        >>
+       ).
+-define(MATCH_YODB_SUFFIX_encoded(A, B, Rest, Year)
+       ,<<"account%2f", (A):2/binary, "/", (B):2/binary, "/", (Rest):28/binary
+         ,"-", (Year):4/binary
+        >>
+       ).
+
+%% FIXME: replace these with the above ones, actually matching: "account..."
+%% FIXME: add MATCH_YODB_SUFFIX_encoded/2
+-define(MATCH_YODB_SUFFIX_RAW(Account, Year)
+       ,<<(Account):32/binary, "-", (Year):4/binary>>
+       ).
+-define(MATCH_YODB_SUFFIX_UNENCODED(Account, Year)
+       ,<<(Account):42/binary, "-", (Year):4/binary>>
+       ).
+-define(MATCH_YODB_SUFFIX_ENCODED(Account, Year)
+       ,<<(Account):48/binary, "-", (Year):4/binary>>
+       ).
+-define(MATCH_YODB_PREFIX(Year, Account)
+       ,<<(Year):4/binary, "-", (Account)/binary>>  %% FIXME: add missing size
+       ).
+-define(MATCH_YODB_PREFIX_M1(Year, Account)
+       ,<<(Year):4/binary, "-", (Account)/binary>>  %% FIXME: add missing size
+       ).
+
 %% FIXME: replace these with the above ones, actually matching: "account..."
 %% FIXME: add MATCH_MODB_SUFFIX_encoded/3
 -define(MATCH_MODB_SUFFIX_RAW(Account, Year, Month)
