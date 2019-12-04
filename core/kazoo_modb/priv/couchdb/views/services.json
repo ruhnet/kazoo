@@ -23,6 +23,7 @@
                 "  });",
                 "}"
             ]
+<<<<<<< HEAD
         },
         "day_summary_by_date": {
             "map": [
@@ -135,6 +136,8 @@
                 "  }, {})",
                 "}"
             ]
+=======
+>>>>>>> remove audit summary views
         }
     }
 }
