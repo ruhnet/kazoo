@@ -221,7 +221,7 @@ account_yodb_dataplan(AccountYODB, DocType, 'undefined') ->
 account_yodb_dataplan(AccountYODB, DocType, StorageId) ->
     AccountId = kzs_util:format_account_id(AccountYODB),
     Plan = ?CACHED_STORAGE_DATAPLAN(AccountId, StorageId),
-    dataplan_type_match(<<"Yodb">>, DocType, Plan, AccountId).
+    dataplan_type_match(<<"yodb">>, DocType, Plan, AccountId).
 
 -spec dataplan_connections(map()) -> [{kz_term:ne_binary(), server()}].
 dataplan_connections(#{<<"plan">> := _
