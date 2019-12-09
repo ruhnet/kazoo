@@ -296,7 +296,7 @@ audit_summary(Context, ViewName, Options) ->
                   ,{'should_paginate', 'false'}
                    | maybe_add_max_range(Context, Options)
                   ],
-    crossbar_view:load_modb(Context, ViewName, ViewOptions).
+    crossbar_view:load_yodb(Context, ViewName, ViewOptions).
 
 -spec maybe_add_max_range(cb_context:context(), crossbar_view:options()) -> crossbar_view:options().
 maybe_add_max_range(Context, Options) ->
