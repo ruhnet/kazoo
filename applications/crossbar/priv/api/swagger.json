@@ -37806,6 +37806,25 @@
             },
             "type": "object"
         },
+        "system_config.yodb": {
+            "description": "Schema for yodb system_config",
+            "properties": {
+                "active_yodbs": {
+                    "default": 6,
+                    "description": "yodb active_yodbs",
+                    "type": "integer"
+                },
+                "routines": {
+                    "default": [],
+                    "description": "yodb routines",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
         "system_configs": {
             "description": "Schema for system_config documents",
             "properties": {
@@ -45025,6 +45044,9 @@
                     },
                     {
                         "$ref": "#/parameters/ACCOUNT_ID"
+                    },
+                    {
+                        "$ref": "#/parameters/SOURCE_SERVICE"
                     }
                 ],
                 "responses": {
@@ -45905,9 +45927,6 @@
                     },
                     {
                         "$ref": "#/parameters/ACCOUNT_ID"
-                    },
-                    {
-                        "$ref": "#/parameters/SOURCE_SERVICE"
                     }
                 ],
                 "responses": {
