@@ -79,6 +79,8 @@ is_authorized(_Context, ?HTTP_GET, [{<<"services">>, [?EDITABLE]}]) ->
     'true';
 is_authorized(_Context, ?HTTP_GET, [{<<"services">>, [?QUOTE]}]) ->
     'true';
+is_authorized(Context, ?HTTP_GET, [{<<"services">>, [?AUDIT, ?SUMMARY]}]) ->
+    kz_services_reseller:is_reseller(cb_context:account_id(Context));
 is_authorized(_Context, _, _) ->
     'false'.
 
