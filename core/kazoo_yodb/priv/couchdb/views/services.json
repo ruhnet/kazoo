@@ -3,7 +3,7 @@
     "kazoo": {
         "view_map": [
             {
-                "classification": "modb"
+                "classification": "yodb"
             }
         ]
     },
