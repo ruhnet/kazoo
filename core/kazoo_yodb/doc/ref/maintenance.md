@@ -2,8 +2,8 @@
 
 | Function | Arguments | Description |
 | -------- | --------- | ----------- |
-| `archive_modbs/0` |  | |
-| `archive_modbs/1` | `(AccountId)` | |
-| `delete_modbs/1` | `(Period)` | |
-| `delete_modbs/2` | `(Period,ShouldArchive)` | |
+| `archive_yodbs/0` |  | |
+| `archive_yodbs/1` | `(AccountId)` | |
+| `delete_yodbs/1` | `(Period)` | |
+| `delete_yodbs/2` | `(Period,ShouldArchive)` | |
 | `register_views/0` |  | |
