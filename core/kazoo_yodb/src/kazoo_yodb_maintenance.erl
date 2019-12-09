@@ -75,7 +75,7 @@ should_delete(AccountYodb, Months) ->
 
 -spec delete_yodb(kz_term:ne_binary(), boolean()) -> 'ok'.
 delete_yodb(?MATCH_YODB_SUFFIX_UNENCODED(_,_) = AccountYodb, ShouldArchive) ->
-    delete_yodb(kz_util:format_account_db(AccountYodb), ShouldArchive);
+    delete_yodb(kzs_util:format_account_db(AccountYodb), ShouldArchive);
 delete_yodb(?MATCH_YODB_SUFFIX_ENCODED(_,_) = AccountYodb, ShouldArchive) ->
     'ok' = case ShouldArchive of
                'true' -> kz_datamgr:db_archive(AccountYodb);
