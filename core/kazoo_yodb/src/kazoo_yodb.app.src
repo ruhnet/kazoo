@@ -1,0 +1,13 @@
+{application, kazoo_yodb,
+ [
+  {description, "YODb - Utilities for an account's year-only database"},
+  {vsn, "4.0.0"},
+  {modules, []},
+  {registered, [ ]},
+  {applications, [ kernel
+                 , stdlib
+
+                 , kazoo_data
+                 , kazoo_config
+                 ]}
+ ]}.
