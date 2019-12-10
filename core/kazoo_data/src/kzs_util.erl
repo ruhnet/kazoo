@@ -470,7 +470,7 @@ format_account_id(Account, Year, Month) when is_integer(Year),
 format_account_mod_id(Account) ->
     format_account_mod_id(Account, os:timestamp()).
 
-%% @equiv format_account_y od_id(Account, os:timestamp())
+%% @equiv format_account_yod_id(Account, os:timestamp())
 
 -spec format_account_yod_id(kz_term:api_binary()) -> kz_term:api_binary().
 format_account_yod_id(Account) ->
