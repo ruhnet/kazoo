@@ -1,1 +1,21 @@
-{"type":"object","properties":{"routines":{"type":"array","items":{"type":"string"},"description":"yodb routines","default":[]},"active_yodbs":{"type":"integer","description":"yodb active_yodbs","default":6}},"description":"Schema for yodb system_config","_id":"system_config.yodb","$schema":"http://json-schema.org/draft-04/schema#"}
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "_id": "system_config.yodb",
+    "description": "Schema for yodb system_config",
+    "properties": {
+        "active_yodbs": {
+            "default": 6,
+            "description": "yodb active_yodbs",
+            "type": "integer"
+        },
+        "routines": {
+            "default": [],
+            "description": "yodb routines",
+            "items": {
+                "type": "string"
+            },
+            "type": "array"
+        }
+    },
+    "type": "object"
+}

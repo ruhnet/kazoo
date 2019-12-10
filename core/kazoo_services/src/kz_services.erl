@@ -1206,7 +1206,7 @@ maybe_audit_reseller(Services, CurrentServicesJObj, ProposedServicesJObj)  ->
 -spec audit_reseller(services(), kz_json:object(), kz_json:object()) -> 'ok'.
 audit_reseller(Services, CurrentServicesJObj, ProposedServicesJObj) ->
     {'ok', MasterAccountId} = kapps_util:get_master_account_id(),
-    AccountId = kz_services:account_id(Services),
+    AccountId = account_id(Services),
     ResellerId = kz_services_reseller:get_id(AccountId),
 
     case kz_services_reseller:is_reseller(AccountId)
@@ -1235,8 +1235,9 @@ has_quantity_changes(CurrentServicesJObj, ProposedServicesJObj) ->
     CascadesQty = [<<"quantities">>],
     PQ = kz_json:get_value(CascadesQty, ProposedServicesJObj),
     CQ = kz_json:get_value(CascadesQty, CurrentServicesJObj),
-    case kz_json:diff(CQ, PQ) of
-        {[]} -> 'false';
+    Diff = kz_json:diff(CQ, PQ),
+    case kz_json:is_empty(Diff) of
+        'true' -> 'false';
         _ -> 'true'
     end.
 

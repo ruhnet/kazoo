@@ -353,6 +353,10 @@ normalize_day_summary_by_source(JObj, Acc) ->
     [_SourceService, DateString] = kz_json:get_value(<<"key">>, JObj),
     [kz_json:from_list([{DateString, kz_json:get_value(<<"value">>, JObj)}]) | Acc].
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
 -spec validate_service_plan(cb_context:context(), path_token(), http_method()) -> cb_context:context().
 validate_service_plan(Context, ?SYNCHRONIZATION, ?HTTP_POST) ->
     %% NOTE: sync this accounts billing details with the bookkeeper

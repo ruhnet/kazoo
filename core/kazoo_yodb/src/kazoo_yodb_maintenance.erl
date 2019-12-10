@@ -32,46 +32,36 @@ delete_yodbs(Period) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec delete_yodbs(kz_term:ne_binary(), boolean() | kz_term:ne_binary()) -> 'ok' | 'no_return'.
-delete_yodbs(Period, ShouldArchive) ->
-    Regex = <<"(2[0-9]{3})(0[1-9]|1[0-2])">>,
+delete_yodbs(<<_/binary>> = Period, ShouldArchive) ->
+    Regex = <<"(2[0-9]{3})">>,
     case re:run(Period, Regex, [{'capture', 'all', 'binary'}]) of
-        {'match', [_Full, Year, Month]} ->
-            delete_yodbs(Year, Month, kz_term:is_true(ShouldArchive));
+        {'match', [_Full, Year]} ->
+            delete_yodbs(kz_term:to_integer(Year), kz_term:is_true(ShouldArchive));
         'nomatch' ->
-            io:format("period '~s' does not match YYYYMM format~n", [Period])
-    end.
-
--spec delete_yodbs(kz_term:ne_binary() | kz_time:year(), kz_term:ne_binary() | kz_time:month(), boolean()) -> 'ok' | 'no_return'.
-delete_yodbs(<<_/binary>> = Year, Month, ShouldArchive) ->
-    delete_yodbs(kz_term:to_integer(Year), Month, ShouldArchive);
-delete_yodbs(Year, <<_/binary>> = Month, ShouldArchive) ->
-    delete_yodbs(Year, kz_term:to_integer(Month), ShouldArchive);
-delete_yodbs(Year, Month, ShouldArchive) when is_integer(Year),
-                                              is_integer(Month),
+            io:format("period '~s' does not match YYYY format~n", [Period])
+    end;
+delete_yodbs(Year, ShouldArchive) when is_integer(Year),
                                               Year > 2000,
-                                              Year < 2999,
-                                              Month > 0,
-                                              Month < 13 ->
+                                              Year < 2999 ->
     case erlang:date() of
-        {Year, Month, _} ->
-            io:format("request to delete the current YODB (~p~p) denied~n", [Year, Month]);
-        {CurrYear, CurrMonth, _} when (CurrYear * 12 + CurrMonth) > (Year * 12 + Month) ->
-            io:format("deleting all YODBs equal to or older than ~p/~p~n", [Year, Month]),
-            delete_older_yodbs(Year, Month, kapps_util:get_all_account_mods(), ShouldArchive);
-        {_CurrYear, _CurrMonth, _} ->
-            io:format("request to delete future YODBs (~p~p) denied~n", [Year, Month])
+        {Year, _, _} ->
+            io:format("request to delete the current YODB (~p) denied~n", [Year]);
+        {CurrYear, _, _} when CurrYear > Year ->
+            io:format("deleting all YODBs equal to or older than ~p~n", [Year]),
+            delete_older_yodbs(Year, kapps_util:get_all_account_yods(), ShouldArchive);
+        {_CurrYear, _, _} ->
+            io:format("request to delete future YODBs (~p) denied~n", [Year])
     end.
 
--spec delete_older_yodbs(kz_time:year(), kz_time:month(), kz_term:ne_binaries(), boolean()) -> 'no_return'.
-delete_older_yodbs(Year, Month, AccountYodbs, ShouldArchive) ->
-    Months = (Year * 12) + Month,
-    _ = [delete_yodb(AccountYodb, ShouldArchive) || AccountYodb <- AccountYodbs, should_delete(AccountYodb, Months)],
+-spec delete_older_yodbs(kz_time:year(), kz_term:ne_binaries(), boolean()) -> 'no_return'.
+delete_older_yodbs(Year, AccountYodbs, ShouldArchive) ->
+    _ = [delete_yodb(AccountYodb, ShouldArchive) || AccountYodb <- AccountYodbs, should_delete(AccountYodb, Year)],
     'no_return'.
 
--spec should_delete(kz_term:ne_binary(), pos_integer()) -> boolean().
-should_delete(AccountYodb, Months) ->
-    {_AccountId, ModYear, ModMonth} = kazoo_yodb_util:split_account_mod(AccountYodb),
-    ((ModYear * 12) + ModMonth) =< Months.
+-spec should_delete(kz_term:ne_binary(), kz_term:year()) -> boolean().
+should_delete(AccountYodb, Year) ->
+    {_AccountId, ModYear} = kazoo_yodb_util:split_account_yod(AccountYodb),
+    ModYear =< Year.
 
 -spec delete_yodb(kz_term:ne_binary(), boolean()) -> 'ok'.
 delete_yodb(?MATCH_YODB_SUFFIX_UNENCODED(_,_) = AccountYodb, ShouldArchive) ->

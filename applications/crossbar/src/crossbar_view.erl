@@ -330,7 +330,8 @@ build_load_yodb_params(Context, View, Options) ->
          ,start_time := StartTime
          ,end_time := EndTime
          }=LoadMap ->
-            LoadMap#{databases => get_range_yodbs(Context, Options, Direction, StartTime, EndTime)};
+            Databases =  get_range_yodbs(Context, Options, Direction, StartTime, EndTime),
+            LoadMap#{databases => lists:usort(Databases)};
         Ctx -> Ctx
     end.
 

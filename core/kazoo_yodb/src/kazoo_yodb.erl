@@ -18,6 +18,7 @@
 -export([move_doc/4, move_doc/5]).
 -export([copy_doc/4, copy_doc/5]).
 -export([get_yodb/1, get_yodb/2]).
+-export([maybe_archive_yodb/1]).
 -export([refresh_views/1]).
 -export([create/1, maybe_create/1
         ,add_routine/1
@@ -137,7 +138,8 @@ open_doc(Account, DocId, Options)
     AccountYODb = get_yodb(Account, Options),
     couch_open(AccountYODb, DocId, Options);
 open_doc(Account, DocId, Timestamp)
-  when is_integer(Timestamp) andalso Timestamp > ?YEAR_INT_BOUNDARY ->
+  when is_integer(Timestamp)
+    andalso Timestamp > ?YEAR_INT_BOUNDARY ->
     AccountYODb = get_yodb(Account, Timestamp),
     couch_open(AccountYODb, DocId);
 open_doc(Account, DocId, Year) ->
@@ -375,7 +377,8 @@ get_yodb(?MATCH_YODB_SUFFIX_UNENCODED(_,_) = AccountYODb, _Year) ->
     kzs_util:format_account_yodb(AccountYODb, 'raw');
 get_yodb(?MATCH_YODB_SUFFIX_RAW(_,_) = AccountYODb, _Year) ->
     AccountYODb;
-get_yodb(Account, Year) when is_integer(Year) and Year < ?YEAR_INT_BOUNDARY ->
+get_yodb(Account, Year) when is_integer(Year)
+    andalso Year < ?YEAR_INT_BOUNDARY ->
     kzs_util:format_account_yod_id(Account, Year);
 get_yodb(Account, Timestamp) ->
     kzs_util:format_account_yod_id(Account, Timestamp).
@@ -520,6 +523,33 @@ migrate_routines([<<"wh_", Rest/binary>> | Rs], Acc) ->
     migrate_routines(Rs, [<<"kz_", Rest/binary>> | Acc]);
 migrate_routines([R | Rs], Acc) ->
     migrate_routines(Rs, [R | Acc]).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_archive_yodb(kz_term:ne_binary()) -> 'ok'.
+maybe_archive_yodb(AccountYODb) ->
+    {Year, _, _} = erlang:date(),
+    case should_archive(AccountYODb, Year) of
+        'true' ->
+            lager:info("account yodb ~s needs archiving", [AccountYODb]),
+            'ok' = kz_datamgr:db_archive(AccountYODb),
+            lager:info("account yodb ~s archived, removing the db", [AccountYODb]),
+            Rm = kz_datamgr:db_delete(AccountYODb),
+            lager:info("account yodb ~s deleted: ~p", [AccountYODb, Rm]);
+        'false' ->
+            lager:info("account yodb ~s still current enough to keep", [AccountYODb])
+    end.
+
+-spec should_archive(kz_term:ne_binary(), kz_time:year()) -> boolean().
+should_archive(AccountYODb, Year) ->
+    case kazoo_yodb_util:split_account_yod(AccountYODb) of
+        {_AccountId, Year} -> 'false';
+        {_AccountId, YodbYear} ->
+            (Year - YodbYear) > kapps_config:get_integer(?CONFIG_CAT, <<"active_yodbs">>, 6)
+    end.
+
 
 %%------------------------------------------------------------------------------
 %% @doc Delete an yodb if it is no longer associated with its account.
