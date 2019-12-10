@@ -561,7 +561,7 @@ should_archive(AccountYODb, Year) ->
 %%------------------------------------------------------------------------------
 -spec maybe_delete(kz_term:ne_binary(), [kz_term:ne_binary()]) -> boolean().
 maybe_delete(AccountYODb, AccountIds) ->
-    AccountId = kzs_util:format_account_id(AccountYODb, 'raw'),
+    AccountId = kzs_util:format_account_id(AccountYODb),
     IsOrphaned = not lists:member(AccountId, AccountIds),
     delete_if_orphaned(AccountYODb, IsOrphaned).
 

@@ -68,15 +68,15 @@ prev_year_yod(?MATCH_YODB_SUFFIX_encoded(A, B, Rest, Year)) ->
 %%------------------------------------------------------------------------------
 -spec split_account_yod(kz_term:ne_binary()) -> {kz_term:ne_binary(), kz_time:year()}.
 split_account_yod(?MATCH_YODB_SUFFIX_RAW(Account, Year)) ->
-    {kzs_util:format_account_id(Account, 'raw')
+    {kzs_util:format_account_id(Account)
     ,kz_term:to_integer(Year)
     };
 split_account_yod(?MATCH_YODB_SUFFIX_UNENCODED(Account, Year)) ->
-    {kzs_util:format_account_id(Account, 'raw')
+    {kzs_util:format_account_id(Account)
     ,kz_term:to_integer(Year)
     };
 split_account_yod(?MATCH_YODB_SUFFIX_ENCODED(Account, Year)) ->
-    {kzs_util:format_account_id(Account, 'raw')
+    {kzs_util:format_account_id(Account)
     ,kz_term:to_integer(Year)
     }.
 
