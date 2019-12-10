@@ -33,7 +33,7 @@ prev_year(<<AccountYod/binary>>) ->
     {_AccountId, Year} = split_account_yod(AccountYod),
     prev_year(Year);
 prev_year(Year) ->
-   Year - 1.
+    Year - 1.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -99,7 +99,7 @@ yodb_id() ->
 %%------------------------------------------------------------------------------
 -spec yodb_id(non_neg_integer() | kz_term:ne_binary() | kz_time:year()) -> kz_term:ne_binary().
 yodb_id(Timestamp)  when is_integer(Timestamp)
-                    andalso Timestamp > 10000 ->
+                         andalso Timestamp > 10000 ->
     {{Year, _, _}, _} = calendar:gregorian_seconds_to_datetime(Timestamp),
     yodb_id(Year, kz_binary:rand_hex(16));
 yodb_id(<<_binary:4/binary>>=Year) ->

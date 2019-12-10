@@ -41,8 +41,8 @@ delete_yodbs(<<_/binary>> = Period, ShouldArchive) ->
             io:format("period '~s' does not match YYYY format~n", [Period])
     end;
 delete_yodbs(Year, ShouldArchive) when is_integer(Year),
-                                              Year > 2000,
-                                              Year < 2999 ->
+                                       Year > 2000,
+                                       Year < 2999 ->
     case erlang:date() of
         {Year, _, _} ->
             io:format("request to delete the current YODB (~p) denied~n", [Year]);

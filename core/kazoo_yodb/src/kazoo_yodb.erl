@@ -46,15 +46,15 @@
 %%------------------------------------------------------------------------------
 
 -spec get_results(kz_term:ne_binary(), kz_term:ne_binary(), view_options()) ->
-                         {'ok', kz_json:json_terms()} |
-                         {'error', atom()}.
+          {'ok', kz_json:json_terms()} |
+          {'error', atom()}.
 get_results(Account, View, ViewOptions) ->
     MaxRetries = props:get_integer_value('max_retries', ViewOptions, ?MAX_RETRIES),
     get_results(Account, View, ViewOptions, 'first_try', MaxRetries).
 
 -spec get_results(kz_term:ne_binary(), kz_term:ne_binary(), view_options(), atom(), non_neg_integer()) ->
-                         {'ok', kz_json:json_terms()} |
-                         {'error', atom()}.
+          {'ok', kz_json:json_terms()} |
+          {'error', atom()}.
 get_results(_Account, _View, _ViewOptions, Reason, Retry) when Retry =< 0 ->
     lager:debug("max retries to get view ~s/~s results: ~p", [_Account, _View, Reason]),
     {'error', Reason};
@@ -88,7 +88,7 @@ is_yodb_option('missing_as_error') -> 'true';
 is_yodb_option(_) -> 'false'.
 
 -spec get_results_missing_db(kz_term:ne_binary(), kz_term:ne_binary(), view_options(), integer()) ->
-                                    {'ok', kz_json:objects()}.
+          {'ok', kz_json:objects()}.
 get_results_missing_db(Account, View, ViewOptions, Retry) ->
     AccountYODb = get_yodb(Account, ViewOptions),
     ShouldCreate = props:get_is_true('create_db', ViewOptions, 'true'),
@@ -118,8 +118,8 @@ get_results_missing_db(Account, View, ViewOptions, Retry) ->
 %%------------------------------------------------------------------------------
 
 -spec open_doc(kz_term:ne_binary(), kazoo_data:docid()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 open_doc(Account, {_, ?MATCH_YODB_PREFIX(Year, Account)} = DocId) ->
     AccountYODb = get_yodb(Account, kz_term:to_integer(Year)),
     couch_open(AccountYODb, DocId);
@@ -131,15 +131,15 @@ open_doc(Account, DocId) ->
     couch_open(AccountYODb, DocId).
 
 -spec open_doc(kz_term:ne_binary(), kazoo_data:docid(), integer() | view_options()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 open_doc(Account, DocId, Options)
   when is_list(Options) ->
     AccountYODb = get_yodb(Account, Options),
     couch_open(AccountYODb, DocId, Options);
 open_doc(Account, DocId, Timestamp)
   when is_integer(Timestamp)
-    andalso Timestamp > ?YEAR_INT_BOUNDARY ->
+       andalso Timestamp > ?YEAR_INT_BOUNDARY ->
     AccountYODb = get_yodb(Account, Timestamp),
     couch_open(AccountYODb, DocId);
 open_doc(Account, DocId, Year) ->
@@ -148,14 +148,14 @@ open_doc(Account, DocId, Year) ->
 
 
 -spec couch_open(kz_term:ne_binary(), kazoo_data:docid()) ->
-                        {'ok', kz_json:object()} |
-                        {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 couch_open(AccountYODb, DocId) ->
     couch_open(AccountYODb, DocId, []).
 
 -spec couch_open(kz_term:ne_binary(), kazoo_data:docid(), kz_term:proplist()) ->
-                        {'ok', kz_json:object()} |
-                        {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 couch_open(AccountYODb, DocId, Options) ->
     EncodedYODb = kzs_util:format_account_yodb(AccountYODb, 'encoded'),
     case kz_datamgr:open_doc(EncodedYODb, DocId, Options) of
@@ -169,14 +169,14 @@ couch_open(AccountYODb, DocId, Options) ->
 %%------------------------------------------------------------------------------
 
 -spec save_doc(kz_term:ne_binary(), kz_json:object()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 save_doc(Account, Doc) ->
     save_doc(Account, Doc, []).
 
 -spec save_doc(kz_term:ne_binary(), kz_json:object(), kz_time:now() | kz_time:gregorian_seconds() | kz_term:proplist()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 save_doc(Account, Doc, Options) when is_list(Options) ->
     AccountYODb = get_yodb(Account),
     MaxRetries = props:get_integer_value('max_retries', Options, ?MAX_RETRIES),
@@ -185,16 +185,16 @@ save_doc(Account, Doc, Timestamp) ->
     save_doc(Account, Doc, Timestamp, []).
 
 -spec save_doc(kz_term:ne_binary(), kz_json:object(), kz_time:year() | kz_term:ne_binary() | kz_time:now(), view_options()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 save_doc(Account, Doc, Timestamp, Options) when is_list(Options) ->
     AccountYODb = get_yodb(Account, Timestamp),
     MaxRetries = props:get_integer_value('max_retries', Options, ?MAX_RETRIES),
     couch_save(AccountYODb, Doc, Options, 'first_try', MaxRetries).
 
 -spec couch_save(kz_term:ne_binary(), kz_json:object(), kz_term:proplist(), atom(), integer()) ->
-                        {'ok', kz_json:object()} |
-                        {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 couch_save(AccountYODb, _Doc, _Options, Reason, Retry) when Retry =< 0 ->
     lager:debug("max retries to save doc in ~s: ~p", [AccountYODb, Reason]),
     {'error', Reason};
@@ -238,21 +238,21 @@ save_fun('true') -> fun kz_datamgr:ensure_saved/3.
 %% @end
 %%------------------------------------------------------------------------------
 -spec move_doc(kz_term:ne_binary(), kazoo_data:docid(), kz_term:ne_binary(), kazoo_data:docid()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 move_doc(FromDb, FromId, ToDb, ToId) ->
     move_doc(FromDb, FromId, ToDb, ToId, []).
 
 -spec move_doc(kz_term:ne_binary(), kazoo_data:docid(), kz_term:ne_binary(), kazoo_data:docid(), kz_term:proplist()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 move_doc(FromDb, FromId, ToDb, ToId, Options) ->
     MaxRetries = props:get_integer_value('max_retries', Options, ?MAX_RETRIES),
     move_doc(FromDb, FromId, ToDb, ToId, Options, 'first_try', MaxRetries).
 
 -spec move_doc(kz_term:ne_binary(), kazoo_data:docid(), kz_term:ne_binary(), kazoo_data:docid(), kz_term:proplist(), atom(), integer()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 move_doc(_FromDb, _FromId, _ToDb, _ToId, _Options, Reason, Retry) when Retry =< 0 ->
     lager:error("max retries to move doc from ~s/~p to ~s/~p : ~p"
                ,[_FromDb, _FromId, _ToDb, _ToId, Reason]
@@ -284,21 +284,21 @@ move_doc(FromDb, FromId, ToDb, ToId, Options, _Reason, Retry) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec copy_doc(kz_term:ne_binary(), kazoo_data:docid(), kz_term:ne_binary(), kazoo_data:docid()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 copy_doc(FromDb, FromId, ToDb, ToId) ->
     copy_doc(FromDb, FromId, ToDb, ToId, []).
 
 -spec copy_doc(kz_term:ne_binary(), kazoo_data:docid(), kz_term:ne_binary(), kazoo_data:docid(), kz_term:proplist()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 copy_doc(FromDb, FromId, ToDb, ToId, Options) ->
     MaxRetries = props:get_integer_value('max_retries', Options, ?MAX_RETRIES),
     copy_doc(FromDb, FromId, ToDb, ToId, Options, 'first_try', MaxRetries).
 
 -spec copy_doc(kz_term:ne_binary(), kazoo_data:docid(), kz_term:ne_binary(), kazoo_data:docid(), kz_term:proplist(), atom(), integer()) ->
-                      {'ok', kz_json:object()} |
-                      {'error', atom()}.
+          {'ok', kz_json:object()} |
+          {'error', atom()}.
 copy_doc(_FromDb, _FromId, _ToDb, _ToId, _Options, Reason, Retry) when Retry =< 0 ->
     lager:error("max retries to copy doc from ~s/~p to ~s/~p : ~p"
                ,[_FromDb, _FromId, _ToDb, _ToId, Reason]
@@ -322,9 +322,9 @@ copy_doc(FromDb, FromId, ToDb, ToId, Options, _Reason, Retry) ->
     end.
 
 -spec maybe_create_destination_db(kz_term:ne_binary(), kz_term:docid(), kz_term:ne_binary(), kz_term:proplist()) ->
-                                         'source_not_exists' |
-                                         'too_old'|
-                                         boolean().
+          'source_not_exists' |
+          'too_old'|
+          boolean().
 maybe_create_destination_db(FromDb, FromId, ToDb, Options) ->
     ShouldCreate = props:get_is_true('create_db', Options, 'true'),
     lager:info("destination yodb ~p not found, maybe creating...", [ToDb]),
@@ -363,7 +363,7 @@ get_yodb(Account) ->
     get_yodb(AccountDb, Year).
 
 -spec get_yodb(kz_term:ne_binary(), view_options() | kz_time:gregorian_seconds() | kz_time:now()) ->
-                      kz_term:ne_binary().
+          kz_term:ne_binary().
 get_yodb(Account, ViewOptions) when is_list(ViewOptions) ->
     AccountDb = kzs_util:format_account_db(Account),
     case props:get_value('year', ViewOptions) of
@@ -378,7 +378,7 @@ get_yodb(?MATCH_YODB_SUFFIX_UNENCODED(_,_) = AccountYODb, _Year) ->
 get_yodb(?MATCH_YODB_SUFFIX_RAW(_,_) = AccountYODb, _Year) ->
     AccountYODb;
 get_yodb(Account, Year) when is_integer(Year)
-    andalso Year < ?YEAR_INT_BOUNDARY ->
+                             andalso Year < ?YEAR_INT_BOUNDARY ->
     kzs_util:format_account_yod_id(Account, Year);
 get_yodb(Account, Timestamp) ->
     kzs_util:format_account_yod_id(Account, Timestamp).

@@ -292,7 +292,7 @@ format_account_id(Account) ->
 format_account_id('undefined', _Encoding) -> 'undefined';
 format_account_id(DbName, Timestamp)
   when is_integer(Timestamp)
-    andalso Timestamp > ?YEAR_INT_BOUNDARY ->
+       andalso Timestamp > ?YEAR_INT_BOUNDARY ->
     {{Year, Month, _}, _} = calendar:gregorian_seconds_to_datetime(Timestamp),
     format_account_id(DbName, Year, Month);
 format_account_id(<<"accounts">>, _) -> <<"accounts">>;
@@ -493,8 +493,8 @@ format_account_yod_id(AccountId, {_,_,_}=Timestamp) ->
     {{Year, _, _}, _} = calendar:now_to_universal_time(Timestamp),
     format_account_id(AccountId, Year);
 format_account_yod_id(AccountId, Timestamp)
-    when is_integer(Timestamp)
-        andalso Timestamp > ?YEAR_INT_BOUNDARY ->
+  when is_integer(Timestamp)
+       andalso Timestamp > ?YEAR_INT_BOUNDARY ->
     {{Year, _, _}, _} = calendar:gregorian_seconds_to_datetime(Timestamp),
     format_account_id(AccountId, Year);
 format_account_yod_id(AccountId, Year) when is_binary(Year) ->
