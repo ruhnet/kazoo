@@ -1221,9 +1221,9 @@ audit_reseller(Services, CurrentServicesJObj, ProposedServicesJObj) ->
                                                 }
                                                ]),
             Doc = kz_doc:update_pvt_parameters(JObj, kazoo_yodb:get_yodb(AccountId)),
-            _ = kazoo_yodb:save_doc(AccountId, Doc)
-    end,
-    'ok'.
+            _ = kazoo_yodb:save_doc(AccountId, Doc),
+            'ok'
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc run a diff between services jobs to determine if cascade quantities
