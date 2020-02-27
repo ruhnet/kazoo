@@ -12,15 +12,15 @@
 -include_lib("eunit/include/eunit.hrl").
 
 get_yodb_test_() ->
-    Year = 2019,
-    YearBin = <<"2019">>,
-    OSTimestamp = {1575,479217,923833},
+    {Year, _, _} = erlang:date(),
+    YearBin = kz_term:to_binary(Year),
+    OSTimestamp = os:timestamp(),
 
     AccountRaw = <<"d680c11889f6247fa12925350d4a6bc8">>,
     AccountEnc = <<"account%2Fd6%2F80%2Fc11889f6247fa12925350d4a6bc8">>,
     AccountUn = <<"account/d6/80/c11889f6247fa12925350d4a6bc8">>,
 
-    DB = <<"account%2Fd6%2F80%2Fc11889f6247fa12925350d4a6bc8-", (YearBin):4/binary>>,
+    DB = <<"account%2Fd6%2F80%2Fc11889f6247fa12925350d4a6bc8-",(YearBin):4/binary>>,
 
     [?_assertEqual(DB, kazoo_yodb:get_yodb(AccountRaw))
     ,?_assertEqual(DB, kazoo_yodb:get_yodb(AccountEnc))
