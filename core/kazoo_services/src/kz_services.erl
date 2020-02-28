@@ -1195,8 +1195,7 @@ maybe_audit_reseller(Services, CurrentServicesJObj, ProposedServicesJObj)  ->
     case has_quantity_changes(CurrentServicesJObj, ProposedServicesJObj) of
         'false' -> 'ok';
         'true' ->
-            lager:notice("proposed: ~p~n", [ProposedServicesJObj]),
-            audit_reseller(Services, CurrentServicesJObj, ProposedServicesJObj)
+          audit_reseller(Services, CurrentServicesJObj, ProposedServicesJObj)
    end.
 
 %%------------------------------------------------------------------------------
