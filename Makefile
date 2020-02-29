@@ -416,5 +416,6 @@ include make/splchk.mk
 include make/ci.mk
 include make/fmt.mk
 include make/pest.mk
+include docker/Makefile
 
 circle: ci

@@ -1,0 +1,151 @@
+version: '3.7'
+
+x-node-env:
+  &kz-env
+    LOCAL_USER: "true"
+    TERM: screen-256color
+    KAZOO_COOKIE: change_me
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kazoo/_rel/kazoo/bin"
+
+x-devol-cfg:
+  &kz-vol
+    - type: bind
+      source: ${KAZOO_SRC}
+      target: /opt/kazoo
+    - type: volume
+      source: kazoo-sounds
+      target: /opt/sounds
+    - type: bind
+      source: ${wKazoo}/monster-ui
+      target: /opt/monster-ui
+      read_only: true
+    - type: bind
+      source: ${ROOT}/docker/scripts
+      target: /opt/scripts
+    - type: bind
+      source: ${DOCKER_ROOT}/compose/files/kazoo-config.ini
+      target: /etc/kazoo/config.ini
+    - type: tmpfs
+      target: /etc/kazoo/ra
+
+volumes:
+    kazoo-sounds:
+    couchdb-data:
+        name: kzmaster-couchdb-data
+
+services:
+  couchdb:
+    image: couchdb:latest
+    hostname: 'couchdb.2600hz-test.com'
+    network_mode: host
+    environment:
+      # make sure couchdb using the above hostname
+      # by setting NODENAME to hostname, otherwise db's are
+      # are created with random docker hostnae/container name
+      NODENAME: 'couchdb.2600hz-test.com'
+    volumes:
+      - type: bind
+        source: ${DOCKER_ROOT}/compose/files/couchdb-cluster.ini
+        target: /opt/couchdb/etc/local.d/20-cluster.ini
+      - type: volume
+        source: couchdb-data
+        target: "/opt/couchdb/data"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: 'rabbitmq.2600hz-test.com'
+    network_mode: host
+    environment:
+        # This is needed to allow distributed Erlang shell
+        # and start of rabbitmq
+        RABBITMQ_USE_LONGNAME: 'true'
+    volumes:
+        # enabling rabbitmq_consistent_hash_exchange plugin
+        - type: bind
+          source: ${DOCKER_ROOT}/compose/files/rabbitmq-entrypoint.sh
+          target: /rabbitmq-entrypoint.sh
+        # without this sometimes docker/rabbitmq veing stupid
+        # and causing rabbitmq to behave strangely (not creating exchange or etc)
+        - type: tmpfs
+          target: /var/lib/rabbitmq
+    entrypoint: /rabbitmq-entrypoint.sh
+    command: ["rabbitmq-server"]
+
+  kazoo_apps:
+    image: icehess/kz-dev-env:21
+    hostname: 'kazoo_apps.2600hz-test.com'
+    network_mode: host
+    environment:
+       << : *kz-env
+       KAZOO_NODE: kazoo_apps
+       NODE_NAME: kazoo_apps
+       REL: kazoo_apps
+    volumes: *kz-vol
+    tty: true
+    command: ["bash"]
+
+  kazoo_ecallmgr:
+    image: icehess/kz-dev-env:21
+    hostname: 'ecallmgr.2600hz-test.com'
+    environment:
+       << : *kz-env
+       KAZOO_NODE: ecallmgr
+       NODE_NAME: ecallmgr
+       REL: ecallmgr
+       KAZOO_APPS: "ecallmgr"
+    volumes: *kz-vol
+    command: ["bash"]
+    tty: true
+
+  kazoo_sounds:
+    image: 'alpine:latest'
+    command: ["/bin/ash"]
+    volumes:
+      - type: volume
+        source: kazoo-sounds
+        target: /opt/kazoo-sounds
+    tty: true
+
+  monster-ui:
+    image: ${MONSTER_IMG:-node:10.16.0-alpine}
+    hostname: 'portal.2600hz-test.com'
+    environment:
+       TERM: screen-256color
+       LC_CTYPE: en_US.UTF-8
+       LANG: en_US.UTF-8
+    volumes:
+      - type: bind
+        source: ./monster-entrypoint.sh
+        target: /monster-entrypoint.sh
+      - type: bind
+        source: ${wKazoo}/monster-ui
+        target: "/opt/monster-ui"
+    tty: true
+    entrypoint: /monster-entrypoint.sh
+    command: ["/opt/monster-ui/node_modules/gulp/bin/gulp.js", "serve-dev"]
+    network_mode: host
+
+ freeswitch:
+   image: icehess/kz-fs:20.19.6-2600hz
+   hostname: 'freeswitch.2600hz-test.com'
+   command: /usr/bin/docker-freeswitch start
+   environment:
+       LOCAL_USER: "true"
+       # FS_TRACE: "true"
+   network_mode: host
+
+ kamailio:
+   image: icehess/kz-kam:5.2.5-2600hz.rc1.0
+   hostname: 'kamailio.2600hz-test.com'
+   command: /usr/bin/docker-kamailio start
+   environment:
+       LOCAL_USER: "true"
+       KAM_EXTRA_OPTIONS: "-x tlsf -w /tmp -A WITH_AUTH_TOKEN"
+       # ENABLE_SIP_TRACE_ROLE: "true"
+   network_mode: host
+
+
+  mailcatcher:
+    image: 'schickling/mailcatcher'
+    hostname: 'mail.2600hz-test.com'
+    network_mode: host

@@ -1,0 +1,48 @@
+version: '3.7'
+
+volumes:
+    couchdb-data:
+        name: kz-master-couchdb-data
+
+services:
+  couchdb:
+    image: couchdb:latest
+    hostname: 'couchdb.2600hz-test.com'
+    environment:
+      # make sure couchdb using the above hostname
+      # by setting NODENAME to hostname, otherwise db's are
+      # are created with random docker hostnae/container name
+      NODENAME: 'couchdb.2600hz-test.com'
+    volumes:
+      - type: bind
+        source: ${DOCKER_ROOT}/compose/files/couchdb-cluster.ini
+        target: /opt/couchdb/etc/local.d/20-cluster.ini
+      - type: volume
+        source: couchdb-data
+        target: "/opt/couchdb/data"
+    network_mode: host
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: 'rabbitmq.2600hz-test.com'
+    network_mode: host
+    environment:
+        # This is needed to allow distributed Erlang shell
+        # and start of rabbitmq
+        RABBITMQ_USE_LONGNAME: 'true'
+    volumes:
+        # enabling rabbitmq_consistent_hash_exchange plugin
+        - type: bind
+          source: ${DOCKER_ROOT}/compose/files/rabbitmq-entrypoint.sh
+          target: /rabbitmq-entrypoint.sh
+        # without this sometimes docker/rabbitmq veing stupid
+        # and causing rabbitmq to behave strangely (not creating exchange or etc)
+        - type: tmpfs
+          target: /var/lib/rabbitmq
+    entrypoint: /rabbitmq-entrypoint.sh
+    command: ["rabbitmq-server"]
+
+  mailcatcher:
+    image: 'schickling/mailcatcher'
+    hostname: 'mail.hsm.com'
+    network_mode: host
