@@ -325,7 +325,7 @@ build_load_modb_params(Context, View, Options) ->
 -spec build_load_yodb_params(cb_context:context(), kz_term:ne_binary(), options()) ->
           load_params() | cb_context:context().
 build_load_yodb_params(Context, View, Options) ->
-    case build_load_range_params(Context, View, Options) of
+    case build_load_time_range_params(Context, View, Options) of
         #{direction := Direction
          ,start_time := StartTime
          ,end_time := EndTime
