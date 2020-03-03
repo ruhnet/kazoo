@@ -1,0 +1,10 @@
+!profiles/amqp-db
+!profiles/amqp-db-sip
+!profiles/kzdev-amqp-db
+!profiles/kzdev-amqp-db-sip
+!profiles/host-amqp-db
+!profiles/host-amqp-db-sip
+!profiles/host-kzdev-amqp-db
+!profiles/host-kzdev-amqp-db-sip
+
+profiles/*
