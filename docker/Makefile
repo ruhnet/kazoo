@@ -1,4 +1,4 @@
-ROOT ?= $(shell cd "$(dirname '.')" && pwd -P)
+ROOT ?= $(shell cd "$(dirname '.')" && cd .. && pwd -P)
 DOCKER_ROOT ?= ${ROOT}/docker
 
 ## Platform detection.
@@ -47,6 +47,7 @@ export KAZOO_SRC
 
 # this is good for use with `eval` and export containers ports and urls
 docker-env:
+	@echo
 	@cat ${DOCKER_ROOT}/banner.txt
 	@echo
 	@echo "export ROOT=${ROOT}"
