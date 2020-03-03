@@ -4,6 +4,10 @@ volumes:
     couchdb-data:
         name: kz-master-couchdb-data
 
+networks:
+  kazoo:
+    attachable: true
+
 services:
   couchdb:
     image: couchdb:latest
@@ -11,21 +15,25 @@ services:
     environment:
       # make sure couchdb using the above hostname
       # by setting NODENAME to hostname, otherwise db's are
-      # are created with random docker hostnae/container name
+      # are created with random docker hostname/container name
       NODENAME: 'couchdb.2600hz-test.com'
     volumes:
       - type: bind
-        source: ${DOCKER_ROOT}/compose/files/couchdb-cluster.ini
+        source: ${DOCKER_ROOT}/files/couchdb-cluster.ini
         target: /opt/couchdb/etc/local.d/20-cluster.ini
       - type: volume
         source: couchdb-data
         target: "/opt/couchdb/data"
-    network_mode: host
+    ports:
+      - target: 9100
+      - target: 5984
+      - target: 5986
+    networks:
+      kazoo:
 
   rabbitmq:
     image: rabbitmq:3-management
     hostname: 'rabbitmq.2600hz-test.com'
-    network_mode: host
     environment:
         # This is needed to allow distributed Erlang shell
         # and start of rabbitmq
@@ -33,7 +41,7 @@ services:
     volumes:
         # enabling rabbitmq_consistent_hash_exchange plugin
         - type: bind
-          source: ${DOCKER_ROOT}/compose/files/rabbitmq-entrypoint.sh
+          source: ${DOCKER_ROOT}/files/rabbitmq-entrypoint.sh
           target: /rabbitmq-entrypoint.sh
         # without this sometimes docker/rabbitmq veing stupid
         # and causing rabbitmq to behave strangely (not creating exchange or etc)
@@ -41,8 +49,17 @@ services:
           target: /var/lib/rabbitmq
     entrypoint: /rabbitmq-entrypoint.sh
     command: ["rabbitmq-server"]
+    ports:
+      - target: 15672 # management UI
+      - target: 5672 # AMQP port
+    networks:
+      kazoo:
 
   mailcatcher:
     image: 'schickling/mailcatcher'
-    hostname: 'mail.hsm.com'
-    network_mode: host
+    hostname: 'mail.2600hz-test.com'
+    ports:
+      - target: 1080
+      - target: 1025
+    networks:
+      - kazoo

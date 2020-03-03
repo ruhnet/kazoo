@@ -15,15 +15,16 @@ x-devol-cfg:
     - type: volume
       source: kazoo-sounds
       target: /opt/sounds
+      read_only: true
     - type: bind
       source: ${wKazoo}/monster-ui
       target: /opt/monster-ui
       read_only: true
     - type: bind
-      source: ${ROOT}/docker/scripts
+      source: ${DOCKER_ROOT}/scripts
       target: /opt/scripts
     - type: bind
-      source: ${DOCKER_ROOT}/compose/files/kazoo-config.ini
+      source: ${DOCKER_ROOT}/files/kazoo-config.ini
       target: /etc/kazoo/config.ini
     - type: tmpfs
       target: /etc/kazoo/ra
@@ -31,7 +32,7 @@ x-devol-cfg:
 volumes:
     kazoo-sounds:
     couchdb-data:
-        name: kzmaster-couchdb-data
+        name: kz-master-couchdb-data
 
 services:
   couchdb:
@@ -41,11 +42,11 @@ services:
     environment:
       # make sure couchdb using the above hostname
       # by setting NODENAME to hostname, otherwise db's are
-      # are created with random docker hostnae/container name
+      # are created with random docker hostname/container name
       NODENAME: 'couchdb.2600hz-test.com'
     volumes:
       - type: bind
-        source: ${DOCKER_ROOT}/compose/files/couchdb-cluster.ini
+        source: ${DOCKER_ROOT}/files/couchdb-cluster.ini
         target: /opt/couchdb/etc/local.d/20-cluster.ini
       - type: volume
         source: couchdb-data
@@ -62,7 +63,7 @@ services:
     volumes:
         # enabling rabbitmq_consistent_hash_exchange plugin
         - type: bind
-          source: ${DOCKER_ROOT}/compose/files/rabbitmq-entrypoint.sh
+          source: ${DOCKER_ROOT}/files/rabbitmq-entrypoint.sh
           target: /rabbitmq-entrypoint.sh
         # without this sometimes docker/rabbitmq veing stupid
         # and causing rabbitmq to behave strangely (not creating exchange or etc)
@@ -87,6 +88,7 @@ services:
   kazoo_ecallmgr:
     image: icehess/kz-dev-env:21
     hostname: 'ecallmgr.2600hz-test.com'
+    network_mode: host
     environment:
        << : *kz-env
        KAZOO_NODE: ecallmgr
@@ -107,7 +109,7 @@ services:
     tty: true
 
   monster-ui:
-    image: ${MONSTER_IMG:-node:10.16.0-alpine}
+    image: node:10.16.0-alpine
     hostname: 'portal.2600hz-test.com'
     environment:
        TERM: screen-256color
@@ -115,7 +117,7 @@ services:
        LANG: en_US.UTF-8
     volumes:
       - type: bind
-        source: ./monster-entrypoint.sh
+        source: ${DOCKER_ROOT}/files/monster-entrypoint.sh
         target: /monster-entrypoint.sh
       - type: bind
         source: ${wKazoo}/monster-ui
@@ -125,25 +127,24 @@ services:
     command: ["/opt/monster-ui/node_modules/gulp/bin/gulp.js", "serve-dev"]
     network_mode: host
 
- freeswitch:
-   image: icehess/kz-fs:20.19.6-2600hz
-   hostname: 'freeswitch.2600hz-test.com'
-   command: /usr/bin/docker-freeswitch start
-   environment:
-       LOCAL_USER: "true"
-       # FS_TRACE: "true"
-   network_mode: host
+  freeswitch:
+    image: icehess/kz-fs:20.19.6-2600hz
+    hostname: 'freeswitch.2600hz-test.com'
+    command: /usr/bin/docker-freeswitch start
+    environment:
+      LOCAL_USER: "true"
+      # FS_TRACE: "true"
+    network_mode: host
 
- kamailio:
-   image: icehess/kz-kam:5.2.5-2600hz.rc1.0
-   hostname: 'kamailio.2600hz-test.com'
-   command: /usr/bin/docker-kamailio start
-   environment:
-       LOCAL_USER: "true"
-       KAM_EXTRA_OPTIONS: "-x tlsf -w /tmp -A WITH_AUTH_TOKEN"
-       # ENABLE_SIP_TRACE_ROLE: "true"
-   network_mode: host
-
+  kamailio:
+    image: icehess/kz-kam:5.2.5-2600hz.rc1.0
+    hostname: 'kamailio.2600hz-test.com'
+    command: /usr/bin/docker-kamailio start
+    environment:
+      LOCAL_USER: "true"
+      KAM_EXTRA_OPTIONS: "-x tlsf -w /tmp -A WITH_AUTH_TOKEN"
+      # ENABLE_SIP_TRACE_ROLE: "true"
+    network_mode: host
 
   mailcatcher:
     image: 'schickling/mailcatcher'

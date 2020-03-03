@@ -1,16 +1,5 @@
-
-.PHONY: docker-amqp-db-start \
-		docker-amqp-db-stop \
-		docker-amqp-db-inspect \
-		docker-amqp-db-down \
-		docker-kzdev-amqp-db-start \
-		docker-kzdev-amqp-db-stop \
-		docker-kzdev-amqp-db-inspect
-
-docker-kzdev-amqp-db-down:
 ROOT ?= $(shell cd "$(dirname '.')" && pwd -P)
 DOCKER_ROOT ?= ${ROOT}/docker
-COMPOSE_DIR = ${DOCKER_ROOT}/compose
 
 ## Platform detection.
 ifeq ($(PLATFORM),)
@@ -27,6 +16,26 @@ ifeq ($(PLATFORM),)
     export PLATFORM
 endif
 
+
+PROFILE_DIRS = $(sort $(dir $(wildcard $(DOCKER_ROOT)/profiles/*/)))
+PROFILES = $(foreach dir,$(PROFILE_DIRS),$(shell basename $(dir)))
+
+START_TARGETS = $(addprefix docker-start,$(PROFILES))
+
+define make-target
+	$(addprefix $1-,$(PROFILES))
+endef
+
+UP_TARGETS = $(call make-target,docker-up)
+DOWN_TARGETS = $(call make-target,docker-down)
+PS_TARGETS = $(call make-target,docker-ps)
+
+.PHONY: docker-env \
+		docker-list-profiles \
+		$(UP_TARGETS) \
+		$(DOWN_TARGETS) \
+		$(PS_TARGETS)
+
 # Enviroment
 
 export ROOT
@@ -36,9 +45,7 @@ KAZOO_SRC ?= ${ROOT}
 export KAZOO_SRC
 
 
-#------------------------------------------------------------
-# good for use with `eval`
-#-----------------------------------------------------------+
+# this is good for use with `eval` and export containers ports and urls
 docker-env:
 	@cat ${DOCKER_ROOT}/banner.txt
 	@echo
@@ -46,33 +53,15 @@ docker-env:
 	@echo "export DOCKER_ROOT=${DOCKER_ROOT}"
 	@echo "export KAZOO_SRC=${KAZOO_SRC}"
 
-#------------------------------------------------------------
-## RabbitMQ + CouchDB + MailCatcher
-#-----------------------------------------------------------+
-docker-amqp-db-start:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-amqp-db/docker-compose.yml up -d
-
-docker-amqp-db-stop:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-amqp-db/docker-compose.yml stop
-
-docker-amqp-db-inspect:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-amqp-db/docker-compose.yml inspect
-
-docker-amqp-db-down:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-amqp-db/docker-compose.yml down
+docker-list-profiles:
+	@echo $(PROFILES) | tr ' ' '\n'
 
 
-#------------------------------------------------------------
-# Kazoo Dev + Kazoo-sounds + RabbitMQ + CouchDB + MailCatcher
-#-----------------------------------------------------------+
-docker-kzdev-amqp-db-start:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-kzdev-amqp-db/docker-compose.yml up -d
+$(UP_TARGETS): docker-up-%:
+	docker-compose -f ${DOCKER_ROOT}/profiles/$*/docker-compose.yml up -d
 
-docker-kzdev-amqp-db-stop:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-kzdev-amqp-db/docker-compose.yml stop
+$(DOWN_TARGETS): docker-down-%:
+	docker-compose -f ${DOCKER_ROOT}/profiles/$*/docker-compose.yml down
 
-docker-kzdev-amqp-db-inspect:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-kzdev-amqp-db/docker-compose.yml inspect
-
-docker-kzdev-amqp-db-down:
-	docker-compose -f ${COMPOSE_DIR}/kzmaster-kzdev-amqp-db/docker-compose.yml down
+$(PS_TARGETS): docker-ps-%:
+	docker-compose -f ${DOCKER_ROOT}/profiles/$*/docker-compose.yml ps
