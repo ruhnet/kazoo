@@ -2,7 +2,7 @@ version: '3.7'
 
 volumes:
     couchdb-data:
-        name: kz-master-couchdb-data
+      name: kz-master-couchdb-data
 
 services:
   couchdb:

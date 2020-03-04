@@ -1,3 +1,5 @@
+profiles/*
+
 !profiles/rand-amqp-db
 !profiles/rand-amqp-db-sip
 !profiles/rand-kzdev-amqp-db
@@ -6,5 +8,3 @@
 !profiles/host-amqp-db-sip
 !profiles/host-kzdev-amqp-db
 !profiles/host-kzdev-amqp-db-sip
-
-profiles/*

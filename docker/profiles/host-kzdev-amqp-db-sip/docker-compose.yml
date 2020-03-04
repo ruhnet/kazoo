@@ -31,8 +31,9 @@ x-devol-cfg:
 
 volumes:
     kazoo-sounds:
+      name: kz-master-kazoo-sounds
     couchdb-data:
-        name: kz-master-couchdb-data
+      name: kz-master-couchdb-data
 
 services:
   couchdb:
