@@ -1,10 +1,16 @@
 profiles/*
 
-!profiles/rand-amqp-db
-!profiles/rand-amqp-db-sip
-!profiles/rand-kzdev-amqp-db
-!profiles/rand-kzdev-amqp-db-sip
+!profiles/fixed-amqp-db
+!profiles/fixed-amqp-db-sip
+!profiles/fixed-kzdev-amqp-db
+!profiles/fixed-kzdev-amqp-db-sip
+
 !profiles/host-amqp-db
 !profiles/host-amqp-db-sip
 !profiles/host-kzdev-amqp-db
 !profiles/host-kzdev-amqp-db-sip
+
+!profiles/rand-amqp-db
+!profiles/rand-amqp-db-sip
+!profiles/rand-kzdev-amqp-db
+!profiles/rand-kzdev-amqp-db-sip

@@ -1,0 +1,150 @@
+version: '3.7'
+
+volumes:
+    couchdb-data:
+      name: kz-master-couchdb-data
+
+networks:
+  kazoo:
+    attachable: true
+
+services:
+  couchdb:
+    image: couchdb:latest
+    hostname: 'couchdb.2600hz-test.com'
+    environment:
+      # make sure couchdb using the above hostname
+      # by setting NODENAME to hostname, otherwise db's are
+      # are created with random docker hostname/container name
+      NODENAME: 'couchdb.2600hz-test.com'
+    volumes:
+      - type: bind
+        source: ${DOCKER_ROOT}/files/couchdb-cluster.ini
+        target: /opt/couchdb/etc/local.d/20-cluster.ini
+      - type: volume
+        source: couchdb-data
+        target: "/opt/couchdb/data"
+    ports:
+      - target: 9100
+        published: 9100
+      - target: 5984
+        published: 5984
+      - target: 5986
+        published: 5986
+    networks:
+      kazoo:
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: 'rabbitmq.2600hz-test.com'
+    environment:
+        # This is needed to allow distributed Erlang shell
+        # and start of rabbitmq
+        RABBITMQ_USE_LONGNAME: 'true'
+    volumes:
+        # enabling rabbitmq_consistent_hash_exchange plugin
+        - type: bind
+          source: ${DOCKER_ROOT}/files/rabbitmq-entrypoint.sh
+          target: /rabbitmq-entrypoint.sh
+        # without this sometimes docker/rabbitmq veing stupid
+        # and causing rabbitmq to behave strangely (not creating exchange or etc)
+        - type: tmpfs
+          target: /var/lib/rabbitmq
+    entrypoint: /rabbitmq-entrypoint.sh
+    command: ["rabbitmq-server"]
+    ports:
+      - target: 15672 # management UI
+        published: 15672
+      - target: 5672 # AMQP port
+        published: 5672
+    networks:
+      kazoo:
+
+  freeswitch:
+    image: icehess/kz-fs:20.19.6-2600hz
+    hostname: 'freeswitch.2600hz-test.com'
+    command: /usr/bin/docker-freeswitch start
+    environment:
+      LOCAL_USER: "true"
+      # FS_TRACE: "true"
+      FU_DOCKER_START: "16384"
+      FU_DOCKER_END: "16392"
+    ports:
+      # range 16384-32768/udp is too long for docker
+      # just port map enough ports for testing and dev env
+      - target: 16384
+        published: 16384
+        protocol: udp
+      - target: 16385
+        published: 16385
+        protocol: udp
+      - target: 16386
+        published: 16386
+        protocol: udp
+      - target: 16387
+        published: 16387
+        protocol: udp
+      - target: 16388
+        published: 16388
+        protocol: udp
+      - target: 16389
+        published: 16389
+        protocol: udp
+      - target: 16390
+        published: 16390
+        protocol: udp
+      - target: 16391
+        published: 16391
+        protocol: udp
+      - target: 16392
+        published: 16392
+        protocol: udp
+    networks:
+      kazoo:
+
+  kamailio:
+    image: icehess/kz-kam:5.2.5-2600hz.rc1.0
+    hostname: 'kamailio.2600hz-test.com'
+    command: /usr/bin/docker-kamailio start
+    environment:
+      LOCAL_USER: "true"
+      KAM_EXTRA_OPTIONS: "-x tlsf -w /tmp -A WITH_AUTH_TOKEN"
+      # ENABLE_SIP_TRACE_ROLE: "true"
+    ports:
+      - target: 5060 # SIP TCP
+        published: 5060
+        protocol: tcp
+      - target: 5060 # SIP UDP
+        published: 5060
+        protocol: udp
+      - target: 5061 # SSIP (SIP TLS)
+        published: 5061
+        protocol: tcp
+      - target: 7000 # SIP ALG TCP
+        published: 7000
+        protocol: tcp
+      - target: 7000 # SIP ALG UDP
+        published: 7000
+        protocol: udp
+      - target: 7001 # SSIP ALG
+        published: 7001
+        protocol: tcp
+      - target: 5064 # http/https/websocket
+        published: 5064
+        protocol: tcp
+      - target: 5065 # http/https/websocket
+        published: 5065
+        protocol: tcp
+    networks:
+      kazoo:
+
+  mailcatcher:
+    image: 'schickling/mailcatcher'
+    hostname: 'mail.2600hz-test.com'
+    ports:
+      - target: 1080
+        published: 1080
+      - target: 1025
+        published: 1025
+    networks:
+      - kazoo
