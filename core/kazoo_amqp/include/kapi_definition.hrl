@@ -1,8 +1,11 @@
 -ifndef(KAPI_DEFINITION_HRL).
+
+-type name() :: kz_term:ne_binary() | fun((kz_term:proplist()) -> kz_term:ne_binary()).
+-type friendly_name() :: kz_term:api_ne_binary().
 -type binding() :: kz_term:api_ne_binary() | fun((...) -> kz_term:ne_binary()).
 
--record(kapi_definition, {name :: kz_term:api_ne_binary()
-                         ,friendly_name :: kz_term:api_ne_binary()
+-record(kapi_definition, {name :: name()
+                         ,friendly_name :: friendly_name()
                          ,description :: kz_term:api_ne_binary()
                          ,category = 'undefined' :: kz_term:api_ne_binary()
                          ,build_fun :: fun((kz_term:api_terms()) -> kz_api:api_formatter_return()) | 'undefined'
