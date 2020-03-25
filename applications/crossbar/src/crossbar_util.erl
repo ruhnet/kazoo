@@ -717,13 +717,14 @@ load_apps(AccountId, UserId, Language) ->
 -spec format_app(kz_term:ne_binary(), kz_json:object()) -> kz_json:object().
 format_app(Lang, AppJObj) ->
     I18N = kzd_app:i18n(AppJObj),
-    DefaultLabel = kz_json:get_value([?DEFAULT_LANGUAGE, <<"label">>], I18N),
+    EnLabel = kz_json:get_ne_binary_value([<<"en-US">>, <<"label">>], I18N),
+    DefaultLabel = kz_json:get_ne_binary_value([?DEFAULT_LANGUAGE, <<"label">>], I18N, EnLabel),
     kz_json:from_list(
       [{<<"id">>, kz_doc:id(AppJObj)}
       ,{<<"name">>, kzd_app:name(AppJObj)}
       ,{<<"api_url">>, kzd_app:api_url(AppJObj)}
       ,{<<"source_url">>, kzd_app:source_url(AppJObj)}
-      ,{<<"label">>, kz_json:get_value([Lang, <<"label">>], I18N, DefaultLabel)}
+      ,{<<"label">>, kz_json:get_ne_binary_value([Lang, <<"label">>], I18N, DefaultLabel)}
       ]).
 
 %%------------------------------------------------------------------------------
