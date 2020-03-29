@@ -72,6 +72,7 @@
         ,<<"Unique-ID">>
         ,<<"X-AUTH-IP">>
         ,<<"X-AUTH-PORT">>
+        ,<<"X-Auth-Token">>
         ,<<"action">>
         ,<<"att_xfer_replaced_by">>
         ,<<"conference_name">>
