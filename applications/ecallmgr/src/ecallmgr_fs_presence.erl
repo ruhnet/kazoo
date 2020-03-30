@@ -181,6 +181,7 @@ realm(Props) ->
                             ,<<"variable_sip_invite_domain">>
                             ,<<"variable_sip_auth_realm">>
                             ,<<"variable_sip_to_host">>
+                            ,<<"variable_domain_name">>
                             ], Props, ?DEFAULT_REALM).
 
 -spec get_user_realm(kz_term:proplist()) -> {kz_term:ne_binary(), kz_term:ne_binary()}.
