@@ -383,10 +383,12 @@ token_authentication_reply(Id, Props, Node, Endpoint) ->
     Realm = props:get_value(<<"domain">>, Props),
     Username = props:get_value(<<"user">>, Props, props:get_value(<<"Auth-User">>, Props)),
     Action = props:get_value(<<"action">>, Props, <<"sip_auth">>),
-    CCVs = [{<<"Account-ID">>, kzd_endpoint:account_id(Endpoint)}
+    AccountId = kzd_endpoint:account_id(Endpoint),
+    CCVs = [{<<"Account-ID">>, AccountId}
            ,{<<"Authorization-ID">>, kzd_endpoint:id(Endpoint)}
            ,{<<"Authorization-Type">>, kzd_endpoint:type(Endpoint)}
            ,{<<"Owner-ID">>, kzd_endpoint:id(Endpoint)}
+           ,{<<"Realm">>, kzd_accounts:fetch_realm(AccountId)}
            ,{<<"Presence-ID">>, kzd_users:presence_id(Endpoint, kzd_users:email(Endpoint))}
            ],
     JObj = kz_json:from_list([{<<"Auth-Method">>, <<"password">>}
