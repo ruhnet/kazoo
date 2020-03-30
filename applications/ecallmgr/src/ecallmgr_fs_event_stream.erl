@@ -91,7 +91,7 @@ handle_cast('connect', #state{ip=IP, port=Port, packet=Packet, idle_alert=Timeou
                        ,[IP, Port, get_event_bindings(State)]),
             {'noreply', State#state{socket=Socket}, Timeout};
         {'error', Reason} ->
-            {'stop', Reason, State}
+            {'stop', {shutdown, Reason}, State}
     end;
 handle_cast(_Msg, #state{socket='undefined'}=State) ->
     lager:debug("unhandled cast: ~p", [_Msg]),
@@ -143,19 +143,19 @@ handle_info({'tcp', Socket, Data}, #state{socket=Socket
         'error':'badarg' ->
             lager:warning("failed to decode packet from ~s (~p b) for ~p: ~p"
                          ,[Node, byte_size(Data), get_event_bindings(State), Data]),
-            {'stop', 'decode_error', State}
+            {'stop', {shutdown, 'decode_error'}, State}
     end;
 handle_info({'tcp_closed', Socket}, #state{socket=Socket, node=Node}=State) ->
     lager:info("event stream for ~p on node ~p closed"
               ,[get_event_bindings(State), Node]
               ),
-    timer:sleep(3 * ?MILLISECONDS_IN_SECOND),
-    {'stop', 'tcp_close', State#state{socket='undefined'}};
+    %% timer:sleep(3 * ?MILLISECONDS_IN_SECOND),
+    {'stop', {shutdown, 'tcp_close'}, State#state{socket='undefined'}};
 handle_info({'tcp_error', Socket, _Reason}, #state{socket=Socket}=State) ->
     lager:warning("event stream tcp error: ~p", [_Reason]),
     gen_tcp:close(Socket),
-    timer:sleep(3 * ?MILLISECONDS_IN_SECOND),
-    {'stop', 'tcp_error', State#state{socket='undefined'}};
+    %% timer:sleep(3 * ?MILLISECONDS_IN_SECOND),
+    {'stop', {shutdown, 'tcp_error'}, State#state{socket='undefined'}};
 handle_info('timeout', #state{node=Node, idle_alert=Timeout}=State) ->
     lager:warning("event stream for ~p on node ~p is unexpectedly idle",
                   [get_event_bindings(State), Node]
@@ -164,7 +164,7 @@ handle_info('timeout', #state{node=Node, idle_alert=Timeout}=State) ->
 handle_info({'EXIT', _, 'noconnection'}, State) ->
     {stop, {'shutdown', 'noconnection'}, State};
 handle_info({'EXIT', _, Reason}, State) ->
-    {stop, Reason, State};
+    {stop, {shutdown, Reason}, State};
 handle_info(_Msg, #state{socket='undefined'}=State) ->
     lager:debug("unhandled message: ~p", [_Msg]),
     {'noreply', State};
