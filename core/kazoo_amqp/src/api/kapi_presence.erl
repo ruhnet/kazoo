@@ -91,7 +91,10 @@
 
 -include_lib("kazoo_amqp/src/kz_amqp_util.hrl").
 
--define(DIALOG_STATES, [<<"early">>, <<"confirmed">>, <<"terminated">>]).
+-define(DIALOG_STATES, [<<"confirmed">>
+                       ,<<"early">>
+                       ,<<"terminated">>
+                       ]).
 
 -ifdef(TEST).
 -export([search_req_routing_key/1
@@ -311,7 +314,7 @@ dialog_definition() ->
                                                             ]}
               ,{fun kapi_definition:set_values/2
                ,[{<<"State">>, ?DIALOG_STATES}
-                 | kapi_definition:event_type_headers(Category, EventName)
+                | kapi_definition:event_type_headers(Category, EventName)
                 ]
                }
               ,{fun kapi_definition:set_types/2, []}
@@ -350,7 +353,7 @@ update_definition() ->
                                                             ]}
               ,{fun kapi_definition:set_values/2
                ,[{<<"State">>, presence_states()}
-                 | kapi_definition:event_type_headers(Category, EventName)
+                | kapi_definition:event_type_headers(Category, EventName)
                 ]
                }
               ,{fun kapi_definition:set_types/2, []}
@@ -503,7 +506,7 @@ sync_definition() ->
                                                             ]}
               ,{fun kapi_definition:set_values/2
                ,[{<<"Action">>, [<<"End">>, <<"Request">>, <<"Start">>]}
-                 | kapi_definition:event_type_headers(Category, EventName)
+                | kapi_definition:event_type_headers(Category, EventName)
                 ]
                }
               ,{fun kapi_definition:set_types/2, []}
@@ -1201,7 +1204,7 @@ presence_states() ->
     [<<"offline">>
     ,<<"online">>
     ,<<"trying">>
-         | ?DIALOG_STATES
+    | ?DIALOG_STATES
     ].
 
 %%------------------------------------------------------------------------------
