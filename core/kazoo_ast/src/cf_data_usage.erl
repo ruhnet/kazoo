@@ -497,7 +497,7 @@ arg_list_has_data_var(DataName, Aliases, [?MOD_FUN_ARGS('kz_json'
                                                        ,'set_value'
                                                        ,Args
                                                        )
-                                          | T
+                                         | T
                                          ]) ->
     case arg_list_has_data_var(DataName, Aliases, Args) of
         {DataName, _} -> ?LOG_DEBUG("  sublist had ~p~n", [DataName]), {DataName, T};
@@ -508,7 +508,7 @@ arg_list_has_data_var(DataName, Aliases, [?MOD_FUN_ARGS('kz_doc'
                                                        ,'set_id'
                                                        ,Args
                                                        )
-                                          | T
+                                         | T
                                          ]) ->
     case arg_list_has_data_var(DataName, Aliases, Args) of
         {DataName, _} -> ?LOG_DEBUG("  sublist had ~p~n", [DataName]), {DataName, T};
@@ -819,7 +819,7 @@ data_index(DataName
           ,[?MOD_FUN_ARGS('kz_json', 'set_value'
                          ,Args
                          )
-            | As
+           | As
            ]
           ,Index
           ) ->
@@ -831,7 +831,7 @@ data_index(DataName
           ,[?MOD_FUN_ARGS('kz_doc', 'set_id'
                          ,Args
                          )
-            | As
+           | As
            ]
           ,Index
           ) ->
@@ -844,6 +844,11 @@ data_index(DataName, [_|As], Index) ->
 
 -spec is_action_module(atom()) -> boolean().
 is_action_module(Module) ->
+    is_action_module(Module, code:which(Module)).
+
+is_action_module(_Module, 'non_existing') -> 'false';
+is_action_module(_Module, 'preloaded') -> 'false';
+is_action_module(Module, _Beam) ->
     Attributes = Module:module_info('attributes'),
     Behaviours = props:get_value('behaviour', Attributes, []),
     lists:member('gen_cf_action', Behaviours).
