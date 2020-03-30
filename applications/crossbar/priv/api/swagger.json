@@ -6895,9 +6895,9 @@
                 },
                 "Presence-State": {
                     "enum": [
-                        "offline",
-                        "online",
                         "trying",
+                        "online",
+                        "offline",
                         "early",
                         "confirmed",
                         "terminated"
@@ -6943,9 +6943,9 @@
                 },
                 "Presence-State": {
                     "enum": [
-                        "offline",
-                        "online",
                         "trying",
+                        "online",
+                        "offline",
                         "early",
                         "confirmed",
                         "terminated"
@@ -6991,9 +6991,9 @@
                 },
                 "Presence-State": {
                     "enum": [
-                        "offline",
-                        "online",
                         "trying",
+                        "online",
+                        "offline",
                         "early",
                         "confirmed",
                         "terminated"
@@ -7067,9 +7067,9 @@
                 },
                 "Presence-State": {
                     "enum": [
-                        "offline",
-                        "online",
                         "trying",
+                        "online",
+                        "offline",
                         "early",
                         "confirmed",
                         "terminated"
