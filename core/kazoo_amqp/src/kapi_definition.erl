@@ -38,6 +38,10 @@
 -type setter_fun() :: {fun((api(), Value) -> api()), Value}.
 -type setter_funs() :: [setter_fun()].
 
+-type event_name() :: kz_term:ne_binary() |
+                      kz_term:ne_binaries() |
+                      event_name_fun().
+
 -opaque api() :: #kapi_definition{}.
 -type apis() :: [api()].
 
@@ -206,7 +210,7 @@ setters(Routines, Definition) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec event_type_headers(kz_term:ne_binary(), kz_term:ne_binary() | kz_term:ne_binaries()) -> kz_term:proplist().
+-spec event_type_headers(kz_term:ne_binary(), event_name()) -> kz_term:proplist().
 event_type_headers(Category, EventName) ->
     [{?KEY_EVENT_CATEGORY, Category}
     ,{?KEY_EVENT_NAME, EventName}
@@ -229,7 +233,7 @@ build_message(Prop, #kapi_definition{validate_fun = ValidateFun
             kz_api:build_message(Prop, ReqHeaders, OptionalHeaders);
         'false' ->
             F = fun(Term) -> kz_term:is_empty(Term)
-                             orelse is_function(Term) %% Some Bindings and Names are actually callback functions
+                                 orelse is_function(Term) %% Some Bindings and Names are actually callback functions
                 end,
             Id = hd(lists:dropwhile(F, [Binding, FriendlyName, Name])),
             {'error', "Proplist failed validation for " ++ kz_term:to_list(Id)}

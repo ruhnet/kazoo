@@ -165,7 +165,8 @@ api_definition(<<"usurp_publisher">>) ->
 -spec event_definition() -> kapi_definition:api().
 event_definition() ->
     Category = <<"call_event">>,
-    EventName = fun(Event) -> props:get_value(<<"Event-Name">>, Event) end,
+    EventName = fun kz_api:event_name/1,
+
     Setters = [{fun kapi_definition:set_name/2, EventName}
               ,{fun kapi_definition:set_friendly_name/2, <<"Call Event">>}
               ,{fun kapi_definition:set_description/2
@@ -333,7 +334,7 @@ channel_status_resp_definition() ->
                                                             ]}
               ,{fun kapi_definition:set_values/2
                ,[{<<"Status">>, [<<"active">>, <<"tmpdown">>, <<"terminated">>]}
-                 | kapi_definition:event_type_headers(Category, EventName)
+                | kapi_definition:event_type_headers(Category, EventName)
                 ]
                }
               ,{fun kapi_definition:set_types/2
