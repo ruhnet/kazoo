@@ -25,4 +25,5 @@ type(Endpoint) ->
 
 -spec account_id(endpoint()) -> kz_term:api_ne_binary().
 account_id(Endpoint) ->
-    kz_doc:account_id(Endpoint).
+    kz_json:get_ne_binary_value(<<"Endpoint-Account-ID">>, Endpoint).
+
