@@ -384,12 +384,13 @@ token_authentication_reply(Id, Props, Node, Endpoint) ->
     Username = props:get_value(<<"user">>, Props, props:get_value(<<"Auth-User">>, Props)),
     Action = props:get_value(<<"action">>, Props, <<"sip_auth">>),
     AccountId = kzd_endpoint:account_id(Endpoint),
+    PresenceId = presence_id(AccountId, Endpoint),
     CCVs = [{<<"Account-ID">>, AccountId}
            ,{<<"Authorization-ID">>, kzd_endpoint:id(Endpoint)}
            ,{<<"Authorization-Type">>, kzd_endpoint:type(Endpoint)}
            ,{<<"Owner-ID">>, kzd_endpoint:id(Endpoint)}
            ,{<<"Realm">>, kzd_accounts:fetch_realm(AccountId)}
-           ,{<<"Presence-ID">>, kzd_users:presence_id(Endpoint, kzd_users:email(Endpoint))}
+           ,{<<"Presence-ID">>, PresenceId}
            ],
     JObj = kz_json:from_list([{<<"Auth-Method">>, <<"password">>}
                              ,{<<"Auth-Password">>, Password}
@@ -403,3 +404,17 @@ token_authentication_reply(Id, Props, Node, Endpoint) ->
     {'ok', Xml} = ecallmgr_fs_xml:authn_resp_xml(JObj),
     lager:debug("sending authn XML to ~w: ~s", [Node, Xml]),
     freeswitch:fetch_reply(Node, Id, 'directory', iolist_to_binary(Xml)).
+
+presence_id(AccountId, Endpoint) ->
+    PresenceId = kzd_users:presence_id(Endpoint, kzd_users:email(Endpoint)),
+    maybe_fix_presence_id(AccountId, PresenceId).
+
+maybe_fix_presence_id(AccountId, PresenceId) ->
+    case binary:match(PresenceId, <<"@">>) of
+        'nomatch' -> fix_presence_id(AccountId, PresenceId);
+        _Match -> PresenceId
+    end.
+
+fix_presence_id(AccountId, PresenceId) ->
+    AccountRealm = kzd_accounts:fetch_realm(AccountId),
+    <<PresenceId/binary, "@", AccountRealm/binary>>.

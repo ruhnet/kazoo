@@ -205,11 +205,11 @@ to_user(Props) ->
 to_user(<<"initiator">>, Props) ->
     props:get_first_defined([<<"Caller-Destination-Number">>
                             ,<<"variable_sip_to_user">>
-                            ], Props);
+                            ], Props, <<"unknown">>);
 to_user(<<"recipient">>, Props) ->
     props:get_first_defined([<<"Caller-Caller-ID-Number">>
                             ,<<"variable_sip_from_user">>
-                            ], Props).
+                            ], Props, <<"unknown">>).
 
 -spec expires(kz_term:ne_binary()) -> integer().
 expires(<<"early">>) -> 0;

@@ -33,6 +33,7 @@
         ,<<"Channel-Presence-ID">>
         ,<<"Channel-State">>
         ,<<"Conf-Name">>
+        ,<<"Conf-Profile">>
         ,<<"Conference-Name">>
         ,<<"Conference-Profile-Name">>
         ,<<"Conference-Unique-ID">>
