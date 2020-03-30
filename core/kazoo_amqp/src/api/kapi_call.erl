@@ -177,8 +177,7 @@ event_definition() ->
               ,{fun kapi_definition:set_validate_fun/2, fun event_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_event/1}
               ,{fun kapi_definition:set_binding/2, fun call_routing_key/2}
-              ,{fun kapi_definition:set_required_headers/2, [<<"Call-ID">>
-                                                            ]}
+              ,{fun kapi_definition:set_required_headers/2, [<<"Call-ID">>]}
               ,{fun kapi_definition:set_optional_headers/2, [<<"Application-Data">>
                                                             ,<<"Application-Event">>
                                                             ,<<"Application-Name">>
@@ -213,11 +212,11 @@ event_definition() ->
                                                             ,<<"Custom-Application-Vars">>
                                                             ,<<"Custom-Channel-Vars">>
                                                             ,<<"Custom-SIP-Headers">>
+                                                            ,<<"DTMF-Digit">> %% DTMF and Tones
+                                                            ,<<"DTMF-Duration">>
                                                             ,<<"Detected-Tone">>
                                                             ,<<"Digits-Dialed">>
                                                             ,<<"Disposition">>
-                                                            ,<<"DTMF-Digit">> %% DTMF and Tones
-                                                            ,<<"DTMF-Duration">>
                                                             ,<<"Duration-Seconds">>
                                                             ,<<"Endpoint-Disposition">>
                                                             ,<<"Fax-Info">>
@@ -233,9 +232,9 @@ event_definition() ->
                                                             ,<<"Media-Recordings">>
                                                             ,<<"Media-Server">>
                                                             ,<<"Origination-Call-ID">>
+                                                            ,<<"Other-Leg-Call-ID">> %% BRIDGE
                                                             ,<<"Other-Leg-Caller-ID-Name">>
                                                             ,<<"Other-Leg-Caller-ID-Number">>
-                                                            ,<<"Other-Leg-Call-ID">> %% BRIDGE
                                                             ,<<"Other-Leg-Destination-Number">>
                                                             ,<<"Other-Leg-Direction">>
                                                             ,<<"Parking-Slot">>
@@ -293,10 +292,8 @@ channel_status_req_definition() ->
               ,{fun kapi_definition:set_validate_fun/2, fun channel_status_req_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_channel_status_req/1}
               ,{fun kapi_definition:set_binding/2, fun call_routing_key/2}
-              ,{fun kapi_definition:set_required_headers/2, [<<"Call-ID">>
-                                                            ]}
-              ,{fun kapi_definition:set_optional_headers/2, [<<"Active-Only">>
-                                                            ]}
+              ,{fun kapi_definition:set_required_headers/2, [<<"Call-ID">>]}
+              ,{fun kapi_definition:set_optional_headers/2, [<<"Active-Only">>]}
               ,{fun kapi_definition:set_values/2
                ,kapi_definition:event_type_headers(Category, EventName)
                }
@@ -357,8 +354,7 @@ query_auth_id_req_definition() ->
               ,{fun kapi_definition:set_validate_fun/2, fun query_auth_id_req_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_query_auth_id_req/1}
               ,{fun kapi_definition:set_binding/2, fun call_routing_key/2}
-              ,{fun kapi_definition:set_required_headers/2, [<<"Auth-ID">>
-                                                            ]}
+              ,{fun kapi_definition:set_required_headers/2, [<<"Auth-ID">>]}
               ,{fun kapi_definition:set_optional_headers/2, []}
               ,{fun kapi_definition:set_values/2
                ,kapi_definition:event_type_headers(Category, EventName)
@@ -393,7 +389,7 @@ query_user_channels_req_definition() ->
     Category = <<"call_event">>,
     Setters = [{fun kapi_definition:set_name/2, EventName}
               ,{fun kapi_definition:set_friendly_name/2, <<"Query User Channels Req">>}
-              ,{fun kapi_definition:set_description/2, <<"">>}
+              ,{fun kapi_definition:set_description/2, <<>>}
               ,{fun kapi_definition:set_category/2, Category}
               ,{fun kapi_definition:set_build_fun/2, fun query_user_channels_req/1}
               ,{fun kapi_definition:set_validate_fun/2, fun query_user_channels_req_v/1}
@@ -410,10 +406,10 @@ query_user_channels_req_definition() ->
                ,kapi_definition:event_type_headers(Category, EventName)
                }
               ,{fun kapi_definition:set_types/2
-               ,[{<<"Usernames">>, fun erlang:is_list/1}
-                ,{<<"Username">>, fun erlang:is_binary/1}
+               ,[{<<"Active-Only">>, fun kz_term:is_boolean/1}
                 ,{<<"Authorizing-IDs">>, fun erlang:is_list/1}
-                ,{<<"Active-Only">>, fun kz_term:is_boolean/1}
+                ,{<<"Username">>, fun erlang:is_binary/1}
+                ,{<<"Usernames">>, fun erlang:is_list/1}
                 ]
                }
               ],
@@ -431,8 +427,7 @@ query_user_channels_resp_definition() ->
               ,{fun kapi_definition:set_validate_fun/2, fun query_user_channels_resp_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_query_user_channels_resp/2}
               ,{fun kapi_definition:set_required_headers/2, []}
-              ,{fun kapi_definition:set_optional_headers/2, [<<"Channels">>
-                                                            ]}
+              ,{fun kapi_definition:set_optional_headers/2, [<<"Channels">>]}
               ,{fun kapi_definition:set_values/2
                ,kapi_definition:event_type_headers(Category, EventName)
                }
@@ -452,8 +447,7 @@ query_account_channels_req_definition() ->
               ,{fun kapi_definition:set_validate_fun/2, fun query_account_channels_req_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_query_account_channels_req/1}
               ,{fun kapi_definition:set_binding/2, fun call_routing_key/2}
-              ,{fun kapi_definition:set_required_headers/2, [<<"Account-ID">>
-                                                            ]}
+              ,{fun kapi_definition:set_required_headers/2, [<<"Account-ID">>]}
               ,{fun kapi_definition:set_optional_headers/2, [<<"Active-Only">>
                                                             ,<<"Username">>
                                                             ,<<"Usernames">>
@@ -462,9 +456,9 @@ query_account_channels_req_definition() ->
                ,kapi_definition:event_type_headers(Category, EventName)
                }
               ,{fun kapi_definition:set_types/2
-               ,[{<<"Usernames">>, fun erlang:is_list/1}
+               ,[{<<"Active-Only">>, fun kz_term:is_boolean/1}
                 ,{<<"Username">>, fun erlang:is_binary/1}
-                ,{<<"Active-Only">>, fun kz_term:is_boolean/1}
+                ,{<<"Usernames">>, fun erlang:is_list/1}
                 ]
                }
               ],
@@ -482,8 +476,7 @@ query_account_channels_resp_definition() ->
               ,{fun kapi_definition:set_validate_fun/2, fun query_account_channels_resp_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_query_account_channels_resp/2}
               ,{fun kapi_definition:set_required_headers/2, []}
-              ,{fun kapi_definition:set_optional_headers/2, [<<"Channels">>
-                                                            ]}
+              ,{fun kapi_definition:set_optional_headers/2, [<<"Channels">>]}
               ,{fun kapi_definition:set_values/2
                ,kapi_definition:event_type_headers(Category, EventName)
                }
@@ -512,8 +505,7 @@ query_channels_req_definition() ->
                ,kapi_definition:event_type_headers(Category, EventName)
                }
               ,{fun kapi_definition:set_types/2
-               ,[{<<"Active-Only">>, fun kz_term:is_boolean/1}
-                ]
+               ,[{<<"Active-Only">>, fun kz_term:is_boolean/1}]
                }
               ],
     kapi_definition:setters(Setters).
@@ -529,15 +521,13 @@ query_channels_resp_definition() ->
               ,{fun kapi_definition:set_build_fun/2, fun query_channels_resp/1}
               ,{fun kapi_definition:set_validate_fun/2, fun query_channels_resp_v/1}
               ,{fun kapi_definition:set_publish_fun/2, fun publish_query_channels_resp/2}
-              ,{fun kapi_definition:set_required_headers/2, [<<"Channels">>
-                                                            ]}
+              ,{fun kapi_definition:set_required_headers/2, [<<"Channels">>]}
               ,{fun kapi_definition:set_optional_headers/2, []}
               ,{fun kapi_definition:set_values/2
                ,kapi_definition:event_type_headers(Category, EventName)
                }
               ,{fun kapi_definition:set_types/2
-               ,[{<<"Channels">>, fun kz_json:is_json_object/1}
-                ]
+               ,[{<<"Channels">>, fun kz_json:is_json_object/1}]
                }
               ],
     kapi_definition:setters(Setters).
