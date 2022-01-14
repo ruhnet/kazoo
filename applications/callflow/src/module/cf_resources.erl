@@ -143,7 +143,7 @@ build_offnet_request(Data, Call) ->
       ,{?KEY_PRESENCE_ID, maybe_presence_id(Call)}
       ,{?KEY_ASSERTED_IDENTITY_NAME, AssertedName}
       ,{?KEY_ASSERTED_IDENTITY_NUMBER, AssertedNumber}
-      ,{?KEY_ASSERTED_IDENTITY_REALM, AssertedRealm}
+      ,{?KEY_ASSERTED_IDENTITY_REALM, kz_json:get_ne_binary_value(<<"assert_uri_realm">>, Data, AssertedRealm)}
       ,{?KEY_RINGBACK, kz_json:get_ne_binary_value(<<"ringback">>, Data)}
       ,{?KEY_T38_ENABLED, get_t38_enabled(Call)}
       ,{?KEY_TIMEOUT, kz_json:get_integer_value(<<"timeout">>, Data)}

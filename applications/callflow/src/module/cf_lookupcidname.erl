@@ -27,7 +27,7 @@ handle(Data, Call) ->
     CallerNumber = kapps_call:caller_id_number(Call),
     ListIds = kz_json:get_value(<<"lists">>, Data, []),
     AccountDb = kapps_call:account_db(Call),
-    lager:debug("matching ~p in ~p", [CallerNumber, AccountDb]),
+    lager:debug("matching ~p in ~p for lists ~p", [CallerNumber, AccountDb, ListIds]),
     CallerName = case match_number_in_lists(AccountDb, CallerNumber, ListIds) of
                      'continue' ->
                          lager:debug("matching regexps"),
@@ -76,7 +76,8 @@ match_prefixes_in_list(AccountDb, Prefixes, ListId) ->
 
             [Entry|_] = lists:sort(fun compare_prefixes/2, Entries),
             Doc = kz_json:get_value(<<"doc">>, Entry),
-            Name = kz_json:get_value([<<"displayname">>, <<"name">>, <<"cid_name">>], Doc),
+	    lager:debug("Found Doc: ~p", [Doc]),
+            Name = kz_json:get_value([<<"displayname">>], Doc),
 
             lager:debug("matched prefix ~p", [get_prefix(Entry)]),
 

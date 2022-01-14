@@ -20,6 +20,7 @@
 
 -spec handle_req(kapi_route:req(), kz_term:proplist()) -> 'ok'.
 handle_req(RouteReq, Props) ->
+    lager:debug("BNP: account-id from CCVs: ~p",[kz_json:get_value([<<"Custom-Channel-Vars">>, <<"Account-ID">>], RouteReq)]),
     CallId = kapi_route:call_id(RouteReq),
     kz_util:put_callid(CallId),
     'true' = kapi_route:req_v(RouteReq),

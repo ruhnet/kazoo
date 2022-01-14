@@ -288,13 +288,14 @@ build_local_extension(#state{number_props=Props
     OriginalAccountId = kapi_offnet_resource:account_id(OffnetJObj),
     ResellerId = kz_services_reseller:get_id(OriginalAccountId),
     {CEDNum, CEDName} = local_extension_callee_id(OffnetJObj, Number),
+    lager:debug("set outbound callee id to ~s '~s'", [CEDNum, CEDName]),
     Realm = get_account_realm(AccountId),
     FromRealm = get_account_realm(OriginalAccountId),
     FromURI = <<"sip:", CIDNum/binary, "@", Realm/binary>>,
     CCVsOrig = kapi_offnet_resource:custom_channel_vars(OffnetJObj, kz_json:new()),
     CAVs = kapi_offnet_resource:custom_application_vars(OffnetJObj),
 
-    CCVs = kz_json:set_values([{<<"Ignore-Display-Updates">>, <<"true">>}
+    CCVs = kz_json:set_values([{<<"Ignore-Display-Updates">>, <<"false">>}
                               ,{<<"Account-ID">>, OriginalAccountId}
                               ,{<<"Reseller-ID">>, ResellerId}
                               ,{<<"Outbound-Flags">>, outbound_flags(OffnetJObj)}

@@ -303,7 +303,9 @@ maybe_endpoint_format_from(Endpoint, Number, OffnetReq) ->
 -spec endpoint_format_from(kz_json:object(), kz_term:ne_binary(), kapi_offnet_resource:req(), kz_json:object()) ->
                                   kz_json:object().
 endpoint_format_from(Endpoint, Number, OffnetReq, CCVs) ->
-    FromNumber = kz_json:get_ne_value(?KEY_OUTBOUND_CALLER_ID_NUMBER, Endpoint, Number),
+    DefaultFromNumber = kz_json:get_ne_value(?KEY_OUTBOUND_CALLER_ID_NUMBER, Endpoint, Number),
+    FromNumber = kz_json:get_ne_value(<<"From-URI-User">>, CCVs, DefaultFromNumber),
+    lager:debug("BNP: ~p ~p ~p", [?KEY_OUTBOUND_CALLER_ID_NUMBER, Endpoint, Number]),
     case get_endpoint_format_from(OffnetReq, CCVs) of
         <<_/binary>> = Realm ->
             FromURI = <<"sip:", FromNumber/binary, "@", Realm/binary>>,

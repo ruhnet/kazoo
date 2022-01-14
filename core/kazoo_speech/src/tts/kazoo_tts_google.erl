@@ -40,6 +40,7 @@ create(Text, Voice, Format, Options) ->
                         'undefined'.
 -spec get_mapped_voice(kz_term:ne_binary()) -> mapped_voice().
 get_mapped_voice(Voice) ->
+    lager:debug("get_mapped_voice: ~p", [Voice]),
     case lists:keyfind(Voice, #voiceDesc.name, ?GOOGLE_TTS_VOICE_MAPPINGS) of
         #voiceDesc{languageCodes=[Code|_]} -> {Voice, Code};
         'false' ->
@@ -83,15 +84,17 @@ make_request(Text, {Voice, Language}, GoogleFormat, Options, EngineData) ->
 
     Body = build_request_body(Text, Voice, Language, GoogleFormat),
 
-    lager:debug("sending TTS request to ~s", [BaseUrl]),
-
+    lager:debug("sending TTS request to ~s : ~p - ~p", [BaseUrl, Headers, Body]),
+    lager:debug("Options=~p", [Options]),
     HTTPOptions = props:delete('receiver', Options),
     case props:get_value('receiver', Options) of
         Pid when is_pid(Pid) ->
             Response = kz_http:async_req(Pid, 'post', BaseUrl, Headers, Body, HTTPOptions),
+	    lager:debug("Resp1: ~p", [Response]),
             create_response(Response, EngineData);
         _ ->
             Response = kz_http:post(BaseUrl, Headers, Body, HTTPOptions),
+	    lager:debug("Resp2: ~p", [Response]),
             create_response(Response, EngineData)
     end.
 
@@ -111,6 +114,7 @@ build_request_body(Text, Voice, Language, GoogleFormat) ->
                              ]
                             ,kz_json:new()
                             ),
+    lager:debug("sending google request: ~p", [Req]),
     kz_json:encode(Req).
 
 -spec decode(kz_term:ne_binary(), kz_json:object(), kz_json:object()) -> {kz_term:ne_binary(), kz_json:object()}.

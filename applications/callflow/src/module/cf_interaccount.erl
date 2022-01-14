@@ -41,20 +41,22 @@ request_data(AccountId) ->
 
 
 -spec prepare_call(kz_term:ne_binary(), kz_json:object(), kapps_call:call()) -> kapps_call:call().
-prepare_call(_ToNumber, Data, Call) -> 
-                                                %    Request = list_to_binary([ToNumber, "@", kapps_call:request_realm(Call)]),
-                                                %    To = list_to_binary([ToNumber, "@", kapps_call:to_realm(Call)]),
+prepare_call(ToNumber, Data, Call) -> 
+                                                    Request = list_to_binary([ToNumber, "@", kapps_call:request_realm(Call)]),
+                                                    To = list_to_binary([ToNumber, "@", kapps_call:to_realm(Call)]),
     PrefixName = kz_json:get_ne_binary_value(<<"caller_id_name_prefix">>, Data, <<>>),
     PrefixNumber = kz_json:get_ne_binary_value(<<"caller_id_number_prefix">>, Data, <<>>),
 
     lager:info("update prepend cid to <~s> ~s", [PrefixName, PrefixNumber]),
     Updates = [fun(C) -> kapps_call:kvs_store('prepend_cid_number', PrefixNumber, C) end
               ,fun(C) -> kapps_call:kvs_store('prepend_cid_name', PrefixName, C) end
-                                                %,fun(C) -> kapps_call:set_request(Request, C) end
-                                                %,fun(C) -> kapps_call:set_to(To, C) end
-                                                %,fun(C) -> kapps_call:set_callee_id_number(ToNumber, C) end
+						%,fun(C) -> kapps_call:set_callee_id_name(<<"Baboon">>, C) end
+                                                ,fun(C) -> kapps_call:set_request(Request, C) end
+                                                ,fun(C) -> kapps_call:set_to(To, C) end
+                                                ,fun(C) -> kapps_call:set_callee_id_number(ToNumber, C) end
               ],
     Call1 = kapps_call:exec(Updates, Call),
+    lager:info("BNP CALL updated from ~p to ~p", [Call, Call1]),
     cf_exe:set_call(Call1),
     Call1.
 
@@ -116,12 +118,12 @@ is_numeric(N) ->
 
 -spec maybe_match_number(list(), kz_term:ne_binary(), kz_term:ne_binary()) -> kz_term:ne_binary().
 maybe_match_number([], _Number, _AccRealm) ->
-    lager:debug("No inter-account matches found for ~s from %s",[_Number, _AccRealm]),
+    lager:debug("No inter-account matches found for ~s from ~s",[_Number, _AccRealm]),
     'false';
 maybe_match_number([Match|Matches], Number, FromRealm) ->
     MatchRegex = kz_json:get_ne_value(<<"regex">>, Match, <<>>),
     MatchRealms = kz_json:get_ne_value(<<"realms">>, Match, []),
-    lager:debug("Found match regex: ~s for ~s", [MatchRegex, Number]),
+    lager:debug("Found match regex: ~s for ~s : ~p", [MatchRegex, Number, MatchRealms]),
     case lists:member(FromRealm, MatchRealms) 
         andalso re:run(Number, MatchRegex, [{'capture', 'all', 'binary'}])
     of      
@@ -129,17 +131,17 @@ maybe_match_number([Match|Matches], Number, FromRealm) ->
             lager:debug("match for ~s -> ~s", [MatchRegex, Number]),
             Number;
         {'match', Captures} ->
-            lager:debug("capturematch for ~s -> ~s (~p)", [MatchRegex, Number, Captures]),
+            lager:debug("capturematch for ~s -> ~s (~p) (~p)", [MatchRegex, Number, Captures, lists:last(Captures)]),
             lists:last(Captures);
         _ ->
             lager:debug("nomatch for ~s -> ~s from ~s", [MatchRegex, Number, FromRealm]),
             maybe_match_number(Matches, Number, FromRealm)
     end.
-maybe_match_numbers(_, []) -> 'false';
-maybe_match_numbers(Matches, [Number|Numbers]) ->
-    case maybe_match_number(Matches, Number, <<>>) of
-        'false' -> maybe_match_numbers(Matches, Numbers);
-        _Match -> Number
+maybe_match_numbers(_, [], _Realm) -> 'false';
+maybe_match_numbers(Matches, [Number|Numbers], Realm) ->
+    case maybe_match_number(Matches, Number, Realm) of
+        'false' -> maybe_match_numbers(Matches, Numbers, Realm);
+        Match -> Match
     end.
 
 
@@ -158,10 +160,12 @@ maybe_match_numbers(Matches, [Number|Numbers]) ->
 presence_list(Username, Realm) ->
     AccountDoc = find_account_by_realm(Realm),
     lager:debug("Account Doc: ~p", [AccountDoc]),
-    Prefix = kz_json:get_value([<<"interaccount">>, <<"prefix">>], AccountDoc),
+    lager:debug("presence_list: ~p ~p", [Username, Realm]),
+    Prefix = kz_json:get_value([<<"interaccount">>, <<"prefix">>], AccountDoc, <<>>),
     Matches = kz_json:get_value([<<"interaccount">>, <<"matches">>], AccountDoc, []),
     NumberList = [Username, <<Prefix/binary, Username/binary>>],
-    MatchedNumber = maybe_match_numbers(Matches, NumberList),
+    MatchedNumber = maybe_match_numbers(Matches, NumberList, Realm),
+    lager:debug("We have a matched number of ~p",[MatchedNumber]),
     case Prefix =/= 'undefined' andalso MatchedNumber =/= 'false' of
         'false' -> [];
         'true' -> build_presence_list(MatchedNumber, account_realms(), [])

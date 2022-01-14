@@ -410,10 +410,11 @@ build_bridge(#state{endpoints=Endpoints
     CCVs = kz_json:set_values(AddCCVs ++ RemoveCCVs, ReqCCVs),
     FmtEndpoints = stepswitch_util:format_endpoints(Endpoints, Name, Number, OffnetReq),
 
-    Realm = kzd_accounts:fetch_realm(AccountId),
 
     {AssertedNumber, AssertedName} = maybe_override_asserted_identity(OffnetReq, {IsEmergency, Number, Name}),
-
+    
+    AssertedRealm = maybe_override_asserted_realm(OffnetReq, kzd_accounts:fetch_realm(AccountId)),
+     
     props:filter_undefined(
       [{<<"Application-Name">>, <<"bridge">>}
       ,{<<"Dial-Endpoint-Method">>, <<"single">>}
@@ -437,7 +438,7 @@ build_bridge(#state{endpoints=Endpoints
       ,{<<"Outbound-Callee-ID-Name">>, kapi_offnet_resource:outbound_callee_id_name(OffnetReq)}
       ,{<<"Asserted-Identity-Number">>, AssertedNumber}
       ,{<<"Asserted-Identity-Name">>, AssertedName}
-      ,{<<"Asserted-Identity-Realm">>, kapi_offnet_resource:asserted_identity_realm(OffnetReq, Realm)}
+      ,{<<"Asserted-Identity-Realm">>, AssertedRealm}
       ,{<<"B-Leg-Events">>, kapi_offnet_resource:b_leg_events(OffnetReq, [])}
       ,{<<"Endpoints">>, FmtEndpoints}
       ,{<<"Bridge-Actions">>, kapi_offnet_resource:outbound_actions(OffnetReq)}
@@ -446,6 +447,17 @@ build_bridge(#state{endpoints=Endpoints
 
 -type emergency_override() :: {boolean(), kz_term:api_binary(), kz_term:api_binary()}.
 -type caller_id() :: {kz_term:api_ne_binary(), kz_term:api_ne_binary()}.
+
+-spec maybe_override_asserted_realm(kapi_offnet_resource:req(), kz_term:api_binary()) -> kz_term:api_binary().
+maybe_override_asserted_realm(OffnetReq, AccountRealm) ->
+    OverrideRealm = kapi_offnet_resource:assert_uri_realm(OffnetReq),
+    lager:debug("Maybe override Realm: ~p (~p)",[OverrideRealm, OffnetReq]),
+    case kapi_offnet_resource:assert_uri_realm(kapi_offnet_resource:custom_channel_vars(OffnetReq)) of
+        'undefined' -> kapi_offnet_resource:asserted_identity_realm(OffnetReq, AccountRealm);
+        Realm -> Realm
+    end.
+        
+    
 
 -spec maybe_override_asserted_identity(kapi_offnet_resource:req(), emergency_override()) -> caller_id().
 maybe_override_asserted_identity(OffnetReq, {'false', _Number, _Name}) ->

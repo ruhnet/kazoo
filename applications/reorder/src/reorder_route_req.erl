@@ -28,8 +28,8 @@ maybe_known_number(ControllerQ, JObj) ->
         {'ok', _, _} -> choose_response(ControllerQ, JObj, 'false', <<"known_number">>);
         {'error', _R} ->
             lager:debug("~s is not associated with any account, ~p", [Number, _R]),
-            Reconcilable = knm_converters:is_reconcilable(Number),
-            choose_response(ControllerQ, JObj, Reconcilable, <<"unknown_number">>)
+            _Reconcilable = knm_converters:is_reconcilable(Number),
+            choose_response(ControllerQ, JObj, 'false', <<"unknown_number">>)
     end.
 
 -spec choose_response(kz_term:ne_binary(), kz_json:object(), boolean(), kz_term:ne_binary()) -> 'ok'.
@@ -52,7 +52,7 @@ send_response(JObj, ControllerQ, Reconcilable, <<"known_number">> = Type) ->
 
 -spec send_response(kz_json:object(), kz_term:ne_binary(), boolean(), kz_term:ne_binary(), kz_term:api_binary()) -> 'ok'.
 send_response(JObj, ControllerQ, Reconcilable, Code, Message) ->
-    lager:debug("sending response: ~s ~s", [Code, Message]),
+    lager:debug("sending response: ~s ~s | deferred: ~p", [Code, Message, (not Reconcilable)]),
     Resp = [{<<"Msg-ID">>, kz_json:get_value(<<"Msg-ID">>, JObj)}
            ,{<<"Method">>, <<"error">>}
            ,{<<"Route-Error-Code">>, Code}

@@ -314,10 +314,18 @@ rate_channel_resp(Props, Node, {'error', _R}) ->
 maybe_kill_unrated_channel(Props, Node) ->
     Direction = kzd_freeswitch:call_direction(Props),
 
-    case kapps_config:is_true(?APP_NAME, <<Direction/binary, "_rate_required">>, 'false') of
+    %% disconnect only per_minute channels
+    IsPerMinute = case <<"per_minute">> =:= kzd_freeswitch:account_billing(Props)
+        orelse <<"per_minute">> =:= kzd_freeswitch:reseller_billing(Props)
+    of
+      	'true' -> true;
+        'false' -> false
+    end,
+    lager:debug("rate request required for billing: ~p", [IsPerMinute]),
+    case IsPerMinute andalso kapps_config:is_true(?APP_NAME, <<Direction/binary, "_rate_required">>, 'false') of
         'false' -> 'ok';
         'true' ->
-            lager:debug("no rate returned for ~s call, killing this channel", [Direction]),
+            lager:debug("no rate returned for ~s call, killing this channel (~p)", [Direction, Props]),
             kill_channel(Props, Node)
     end.
 

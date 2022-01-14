@@ -29,6 +29,8 @@
 -define(KEY_FORCE_INTERACCOUNT, <<"Force-Interaccount">>).
 -define(KEY_FORMAT_FROM_URI, <<"Format-From-URI">>).
 -define(KEY_FROM_URI_REALM, <<"From-URI-Realm">>).
+-define(KEY_FROM_URI_USER, <<"From-URI-User">>).
+-define(KEY_ASSERT_URI_REALM, <<"Assert-URI-Realm">>).
 -define(KEY_GROUP_ID, <<"Group-ID">>).
 -define(KEY_HOLD_MEDIA, <<"Hold-Media">>).
 -define(KEY_HUNT_ACCOUNT_ID, <<"Hunt-Account-ID">>).

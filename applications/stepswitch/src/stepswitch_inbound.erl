@@ -76,7 +76,7 @@ set_account_id(NumberProps, JObj) ->
 -spec set_ignore_display_updates(knm_number_options:extra_options(), kz_json:object()) ->
                                         kz_json:object().
 set_ignore_display_updates(_, JObj) ->
-    kz_json:set_value(?CCV(<<"Ignore-Display-Updates">>), <<"true">>, JObj).
+    kz_json:set_value(?CCV(<<"Ignore-Display-Updates">>), <<"false">>, JObj).
 
 %%------------------------------------------------------------------------------
 %% @doc

@@ -347,8 +347,10 @@ get_account_by_realm(RawRealm) ->
                             {'ok', kz_term:proplist()} |
                             {'error', 'not_found'}.
 get_ccvs_by_ip(IP) ->
+    Test = ets:lookup(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP)),
+    lager:debug("BNP Peeking... (~p) -> (~p)", [[?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP)], Test]),
     case kz_cache:peek_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP)) of
-        {'ok', {'error', 'not_found'}=E} -> E;
+        {'ok', {'error', 'not_found'}=_E} -> do_get_ccvs_by_ip(IP);
         {'error', 'not_found'} -> do_get_ccvs_by_ip(IP);
         {'ok', _AccountCCVs} = OK -> OK
     end.

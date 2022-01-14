@@ -33,6 +33,8 @@
         ,get_resrc_global/1
         ,get_resrc_format_from_uri/1
         ,get_resrc_from_uri_realm/1
+        ,get_resrc_from_uri_user/1
+        ,get_resrc_assert_uri_realm/1
         ,get_resrc_from_account_realm/1
         ,get_resrc_fax_option/1
         ,get_resrc_codecs/1
@@ -60,7 +62,9 @@
         ,set_resrc_ignore_flags/2
         ,set_resrc_global/2
         ,set_resrc_format_from_uri/2
+        ,set_resrc_from_uri_user/2
         ,set_resrc_from_uri_realm/2
+        ,set_resrc_assert_uri_realm/2
         ,set_resrc_from_account_realm/2
         ,set_resrc_fax_option/2
         ,set_resrc_codecs/2
@@ -115,7 +119,9 @@
                  ,endpoint_options = kz_json:new() :: kz_json:object()
                  ,format_from_uri = 'false' :: boolean()
                  ,from_account_realm = 'false' :: boolean()
+                 ,from_uri_user :: kz_term:api_binary()
                  ,from_uri_realm :: kz_term:api_binary()
+                 ,assert_uri_realm :: kz_term:api_binary()
                  ,is_emergency = 'false' :: boolean()
                  ,force_port = 'false' :: boolean()
                  ,privacy_method = 'undefined' :: kz_term:api_binary()
@@ -140,7 +146,9 @@
                ,ignore_flags = 'false' :: boolean()
                ,global = 'true' :: boolean()
                ,format_from_uri = 'false' :: boolean()
+               ,from_uri_user :: kz_term:api_binary()
                ,from_uri_realm :: kz_term:api_binary()
+               ,assert_uri_realm :: kz_term:api_binary()
                ,from_account_realm = 'false' :: boolean()
                ,fax_option :: kz_term:ne_binary() | boolean()
                ,codecs = [] :: kz_term:ne_binaries()
@@ -204,7 +212,9 @@ resource_to_props(#resrc{}=Resource) ->
       ,{<<"Weight">>, Resource#resrc.weight}
       ,{<<"Global">>, Resource#resrc.global}
       ,{<<"Format-From-URI">>, Resource#resrc.format_from_uri}
+      ,{<<"From-URI-User">>, Resource#resrc.from_uri_user}
       ,{<<"From-URI-Realm">>, Resource#resrc.from_uri_realm}
+      ,{<<"Assert-URI-Realm">>, Resource#resrc.assert_uri_realm}
       ,{<<"From-Account-Realm">>, Resource#resrc.from_account_realm}
       ,{<<"Require-Flags">>, Resource#resrc.require_flags}
       ,{<<"Ignore-Flags">>, Resource#resrc.ignore_flags}
@@ -681,6 +691,7 @@ gateway_to_endpoint(DestinationNumber
                             ,privacy_method = PrivacyMethod
                             ,privacy_hide_name = HideName
                             ,privacy_hide_number = HideNumber
+                            ,assert_uri_realm = AssertRealm
                             }=Gateway
                    ,OffnetJObj
                    ) ->
@@ -694,6 +705,7 @@ gateway_to_endpoint(DestinationNumber
            ,{<<"Resource-Type">>, <<"offnet-termination">>}
            ,{<<"RTCP-MUX">>, RTCP_MUX}
             | gateway_from_uri_settings(Gateway)
+            ++ gateway_assert_uri_settings(Gateway)
            ],
     kz_json:from_list(
       props:filter_empty(
@@ -716,6 +728,7 @@ gateway_to_endpoint(DestinationNumber
         ,{<<"Outbound-Caller-ID-Number">>, CIDNumber}
         ,{<<"Outbound-Caller-ID-Name">>, CIDName}
         ,{<<"SIP-Invite-Parameters">>, sip_invite_parameters(Gateway, OffnetJObj)}
+        ,{<<"Assert-URI-Realm">>, AssertRealm}
         ,{<<"Privacy-Method">>, PrivacyMethod}
         ,{<<"Privacy-Hide-Name">>
          ,HideName
@@ -794,10 +807,22 @@ default_gateway_cid(OffnetJObj, <<"true">>) ->
     ,stepswitch_bridge:bridge_emergency_cid_number(OffnetJObj)
     }.
 
+-spec gateway_assert_uri_settings(gateway()) -> kz_term:proplist().
+gateway_assert_uri_settings(#gateway{assert_uri_realm=AssertRealm}) ->
+    case kz_term:is_empty(AssertRealm) of
+        'false' ->
+            lager:debug("using assert_uri_realm for PAI ~s", [AssertRealm]),
+            [{<<"Assert-URI-Realm">>, AssertRealm}];
+        'true' -> 
+            lager:debug("no Assert-URI-Realm to override", []),
+            []
+    end.
+
 -spec gateway_from_uri_settings(gateway()) -> kz_term:proplist().
 gateway_from_uri_settings(#gateway{format_from_uri='false'}) ->
     [{<<"Format-From-URI">>, 'false'}];
 gateway_from_uri_settings(#gateway{format_from_uri='true'
+                                  ,from_uri_user=FromUser
                                   ,from_uri_realm=FromRealm
                                   ,realm=Realm
                                   ,from_account_realm=AccountRealm
@@ -805,14 +830,16 @@ gateway_from_uri_settings(#gateway{format_from_uri='true'
     %% precedence: from_uri_realm -> from_account_realm -> realm
     case kz_term:is_empty(FromRealm) of
         'false' ->
-            lager:debug("using resource from_uri_realm in From: ~s", [FromRealm]),
+            lager:debug("using resource from_uri_realm in From: ~s@~s", [FromUser, FromRealm]),
             [{<<"Format-From-URI">>, 'true'}
             ,{<<"From-URI-Realm">>, FromRealm}
+            ,{<<"From-URI-User">>, FromUser}
             ];
         'true' when AccountRealm ->
             lager:debug("using account realm in From", []),
             [{<<"Format-From-URI">>, 'true'}
             ,{<<"From-Account-Realm">>, 'true'}
+            ,{<<"From-URI-User">>, FromUser}
             ];
         'true' ->
             case kz_term:is_empty(Realm) of
@@ -1070,6 +1097,7 @@ resource_from_jobj(JObj) ->
                      ,ignore_flags=kz_json:is_true(<<"ignore_flags">>, JObj)
                      ,format_from_uri=kz_json:is_true(<<"format_from_uri">>, JObj)
                      ,from_uri_realm=kz_json:get_ne_value(<<"from_uri_realm">>, JObj)
+                     ,assert_uri_realm=kz_json:get_ne_value(<<"assert_uri_realm">>, JObj)
                      ,from_account_realm=kz_json:is_true(<<"from_account_realm">>, JObj)
                      ,fax_option=kz_json:is_true([<<"media">>, <<"fax_option">>], JObj)
                      ,raw_rules=kz_json:get_value(<<"rules">>, JObj, [])
@@ -1206,6 +1234,7 @@ gateway_from_jobj(JObj, #resrc{is_emergency=IsEmergency
             ,invite_format = kz_json:get_value(<<"invite_format">>, JObj, <<"route">>)
             ,format_from_uri = kz_json:is_true(<<"format_from_uri">>, JObj, FormatFrom)
             ,from_uri_realm = kz_json:get_ne_value(<<"from_uri_realm">>, JObj, FromRealm)
+            ,assert_uri_realm = kz_json:get_value(<<"assert_uri_realm">>, JObj)
             ,from_account_realm=kz_json:is_true(<<"from_account_realm">>, JObj, FromAccountRealm)
             ,is_emergency = gateway_is_emergency(JObj, IsEmergency)
             ,fax_option = kz_json:is_true([<<"media">>, <<"fax_option">>], JObj, T38)
@@ -1337,8 +1366,14 @@ get_resrc_global(#resrc{global=Global}) -> Global.
 -spec get_resrc_format_from_uri(resource()) -> boolean().
 get_resrc_format_from_uri(#resrc{format_from_uri=FormatFromUri}) -> FormatFromUri.
 
+-spec get_resrc_from_uri_user(resource()) -> kz_term:api_binary().
+get_resrc_from_uri_user(#resrc{from_uri_user=FromUriUser}) -> FromUriUser.
+
 -spec get_resrc_from_uri_realm(resource()) -> kz_term:api_binary().
 get_resrc_from_uri_realm(#resrc{from_uri_realm=FromUriRealm}) -> FromUriRealm.
+
+-spec get_resrc_assert_uri_realm(resource()) -> kz_term:api_binary().
+get_resrc_assert_uri_realm(#resrc{assert_uri_realm=AssertUriRealm}) -> AssertUriRealm.
 
 -spec get_resrc_from_account_realm(resource()) -> boolean().
 get_resrc_from_account_realm(#resrc{from_account_realm=FromAccountRealm}) -> FromAccountRealm.
@@ -1417,6 +1452,12 @@ set_resrc_format_from_uri(Resource, FormatFromUri) -> Resource#resrc{format_from
 
 -spec set_resrc_from_uri_realm(resource(), kz_term:api_binary()) -> resource().
 set_resrc_from_uri_realm(Resource, FromUriRealm) -> Resource#resrc{from_uri_realm=FromUriRealm}.
+
+-spec set_resrc_from_uri_user(resource(), kz_term:api_binary()) -> resource().
+set_resrc_from_uri_user(Resource, FromUriUser) -> Resource#resrc{from_uri_user=FromUriUser}.
+
+-spec set_resrc_assert_uri_realm(resource(), kz_term:api_binary()) -> resource().
+set_resrc_assert_uri_realm(Resource, AssertUriRealm) -> Resource#resrc{assert_uri_realm=AssertUriRealm}.
 
 -spec set_resrc_from_account_realm(resource(), boolean()) -> resource().
 set_resrc_from_account_realm(Resource, FromAccountRealm) -> Resource#resrc{from_account_realm=FromAccountRealm}.

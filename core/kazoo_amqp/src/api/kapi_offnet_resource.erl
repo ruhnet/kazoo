@@ -37,6 +37,8 @@
         ,force_outbound/1, force_outbound/2
         ,format_from_uri/1, format_from_uri/2
         ,from_uri_realm/1, from_uri_realm/2
+        ,from_uri_user/1, from_uri_user/2
+        ,assert_uri_realm/1, assert_uri_realm/2
         ,hold_media/1, hold_media/2
         ,hunt_account_id/1, hunt_account_id/2
         ,ignore_early_media/1, ignore_early_media/2
@@ -120,6 +122,8 @@
         ,?KEY_FORCE_INTERACCOUNT
         ,?KEY_FORMAT_FROM_URI
         ,?KEY_FROM_URI_REALM
+        ,?KEY_FROM_URI_USER
+        ,?KEY_ASSERT_URI_REALM
         ,?KEY_GROUP_ID
         ,?KEY_HOLD_MEDIA
         ,?KEY_HUNT_ACCOUNT_ID
@@ -591,9 +595,25 @@ b_leg_events(?REQ_TYPE(JObj), Default) ->
 from_uri_realm(Req) ->
     from_uri_realm(Req, 'undefined').
 
+-spec from_uri_user(req()) -> kz_term:api_binary().
+from_uri_user(Req) ->
+    from_uri_user(Req, 'undefined').
+
 -spec from_uri_realm(req(), Default) -> kz_term:ne_binary() | Default.
 from_uri_realm(?REQ_TYPE(JObj), Default) ->
     kz_json:get_ne_value(?KEY_FROM_URI_REALM, JObj, Default).
+
+-spec from_uri_user(req(), Default) -> kz_term:ne_binary() | Default.
+from_uri_user(?REQ_TYPE(JObj), Default) ->
+    kz_json:get_ne_value(?KEY_FROM_URI_USER, JObj, Default).
+
+-spec assert_uri_realm(req()) -> kz_term:api_binary().
+assert_uri_realm(Req) ->
+    assert_uri_realm(Req, 'undefined').
+
+-spec assert_uri_realm(req(), Default) -> kz_term:ne_binary() | Default.
+assert_uri_realm(?REQ_TYPE(JObj), Default) ->
+    kz_json:get_ne_value(?KEY_ASSERT_URI_REALM, JObj, Default).
 
 -spec account_realm(req()) -> kz_term:api_binary().
 account_realm(Req) ->
