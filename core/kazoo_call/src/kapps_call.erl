@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -71,7 +71,7 @@
 -export([get_prompt/2, get_prompt/3]).
 -export([set_to_tag/2, to_tag/1]).
 -export([set_from_tag/2, from_tag/1]).
--export([direction/1]).
+-export([set_direction/2, direction/1]).
 -export([set_call_bridged/2, call_bridged/1]).
 -export([set_message_left/2, message_left/1]).
 
@@ -133,8 +133,8 @@
 -export([default_helper_function/2]).
 
 -export([start_recording/1, start_recording/2
-        ,mask_recording/1
-        ,unmask_recording/1
+        ,mask_recording/1, mask_recording/2
+        ,unmask_recording/1, unmask_recording/2
         ,stop_recording/1
         ]).
 
@@ -181,7 +181,7 @@
                     ,to = ?NO_USER_REALM :: kz_term:ne_binary()           %% Result of sip_to_user + @ + sip_to_host
                     ,to_user = ?NO_USER :: kz_term:ne_binary()              %% SIP to user
                     ,to_realm = ?NO_REALM :: kz_term:ne_binary()            %% SIP to host
-                    ,inception :: kz_term:api_binary()                   %% Origin of the call <<"on-net">> | <<"off-net">>
+                    ,inception :: kz_term:api_binary()                   %% Origin of the call <<"onnet">> | <<"offnet">>
                     ,account_db :: kz_term:api_binary()                  %% The database name of the account that authorized this call
                     ,account_id :: kz_term:api_binary()                  %% The account id that authorized this call
                     ,authorizing_id :: kz_term:api_binary()              %% The ID of the record that authorized this call
@@ -215,14 +215,15 @@
 
 -type kapps_helper_function() :: fun((kz_term:api_binary(), call()) -> kz_term:api_binary()).
 
--define(SPECIAL_VARS, [{<<"Caller-ID-Name">>, #kapps_call.caller_id_name}
-                      ,{<<"Caller-ID-Number">>, #kapps_call.caller_id_number}
-                      ,{<<"Account-ID">>, #kapps_call.account_id}
-                      ,{<<"Owner-ID">>, #kapps_call.owner_id}
-                      ,{<<"Fetch-ID">>, #kapps_call.fetch_id}
-                      ,{<<"Bridge-ID">>, #kapps_call.bridge_id}
+-define(SPECIAL_VARS, [{<<"Account-ID">>, #kapps_call.account_id}
                       ,{<<"Authorizing-ID">>, #kapps_call.authorizing_id}
                       ,{<<"Authorizing-Type">>, #kapps_call.authorizing_type}
+                      ,{<<"Bridge-ID">>, #kapps_call.bridge_id}
+                      ,{<<"Caller-ID-Name">>, #kapps_call.caller_id_name}
+                      ,{<<"Caller-ID-Number">>, #kapps_call.caller_id_number}
+                      ,{<<"Fetch-ID">>, #kapps_call.fetch_id}
+                      ,{<<"Owner-ID">>, #kapps_call.owner_id}
+                      ,{<<"Inception">>, #kapps_call.inception}
                       ]).
 
 -spec default_helper_function(Field, call()) -> Field.
@@ -287,7 +288,7 @@ from_route_req(RouteReq, #kapps_call{call_id=OldCallId
                     ,origination_call_id=kz_json:get_ne_binary_value(<<"Origination-Call-ID">>, RouteReq, origination_call_id(Call1))
                     ,context=kz_json:get_ne_binary_value(<<"Context">>, RouteReq, context(Call))
                     ,request=Request
-                    ,request_user=to_e164(RequestUser)
+                    ,request_user=to_e164(RequestUser, AccountId)
                     ,request_realm=RequestRealm
                     ,from=From
                     ,from_user=FromUser
@@ -367,7 +368,7 @@ from_route_win(RouteWin, #kapps_call{call_id=OldCallId
                    }.
 
 -spec find_account_info(kz_term:api_binary(), kz_term:api_binary(), kz_term:api_binary()) ->
-                               {kz_term:api_binary(), kz_term:api_binary()}.
+          {kz_term:api_binary(), kz_term:api_binary()}.
 find_account_info(OldId, OldDb, 'undefined') ->
     {OldId, OldDb};
 find_account_info('undefined', _OldDb, AccountId) ->
@@ -873,19 +874,21 @@ callee_id_number(#kapps_call{callee_id_number='undefined'}) -> <<>>;
 callee_id_number(#kapps_call{callee_id_number=CIDNumber}) -> CIDNumber.
 
 -spec set_request(kz_term:ne_binary(), call()) -> call().
-set_request(Request, #kapps_call{}=Call) when is_binary(Request) ->
+set_request(Request, #kapps_call{account_id=AccountId}=Call) when is_binary(Request) ->
     [RequestUser, RequestRealm] = binary:split(Request, <<"@">>),
     Call#kapps_call{request=Request
-                   ,request_user=to_e164(RequestUser)
+                   ,request_user=to_e164(RequestUser, AccountId)
                    ,request_realm=RequestRealm
                    }.
 
 -ifdef(TEST).
-to_e164(Number) -> Number.
+to_e164(Number, _AccountId) -> Number.
 -else.
-to_e164(<<"*", _/binary>>=Number) -> Number;
-to_e164(Number) ->
-    knm_converters:normalize(Number).
+to_e164(<<"*", _/binary>>=Number, _AccountId) -> Number;
+to_e164(Number, 'undefined') ->
+    knm_converters:normalize(Number);
+to_e164(Number, AccountId) ->
+    knm_converters:normalize(Number, AccountId).
 -endif.
 
 -spec request(call()) -> kz_term:ne_binary().
@@ -1174,6 +1177,10 @@ from_tag(#kapps_call{from_tag=FromTag}) ->
 direction(#kapps_call{direction=Direction}) ->
     Direction.
 
+-spec set_direction(kz_term:ne_binary(), call()) -> call().
+set_direction(Direction, #kapps_call{}=Call) when is_binary(Direction) ->
+    Call#kapps_call{direction=Direction}.
+
 -spec call_bridged(call()) -> boolean().
 call_bridged(#kapps_call{call_bridged=IsBridged}) ->
     kz_term:is_true(IsBridged).
@@ -1314,7 +1321,10 @@ handle_ccvs_update(CCVs, #kapps_call{}=Call) ->
                             'undefined' -> C;
                             Value -> setelement(Index, C, Value)
                         end
-                end, Call#kapps_call{ccvs=CCVs}, ?SPECIAL_VARS).
+                end
+               ,Call#kapps_call{ccvs=CCVs}
+               ,?SPECIAL_VARS
+               ).
 
 -spec set_custom_publish_function(kapps_custom_publish(), call()) -> call().
 set_custom_publish_function(Fun, #kapps_call{}=Call) when is_function(Fun, 2) ->
@@ -1490,6 +1500,7 @@ start_recording(Data0, Call) ->
                         ,kz_json:get_ne_binary_value(?RECORDING_ID_KEY, Data)
                         ,RecorderPid
                         }
+                       ,{fun set_is_recording/2, 'true'}
                        ],
             exec(Routines, Call);
         _Err ->
@@ -1520,6 +1531,16 @@ stop_recording(OriginalCall) ->
 
 -spec mask_recording(call()) -> call().
 mask_recording(OriginalCall) ->
+    mask_recording(call_id(OriginalCall), OriginalCall).
+
+-spec mask_recording(kz_term:api_ne_binary(), call()) -> call().
+mask_recording(LegId, OriginalCall) ->
+    mask_recording(LegId, OriginalCall, call_id(OriginalCall)).
+
+-spec mask_recording(kz_term:api_ne_binary(), call(), kz_term:ne_binary()) -> call().
+mask_recording('undefined', OriginalCall, CallId) ->
+    mask_recording(CallId, OriginalCall, CallId);
+mask_recording(CallId, OriginalCall, CallId) ->
     case retrieve_recording(OriginalCall) of
         {'ok', {MediaName, _RecorderPid}, Call} ->
             kapps_call_command:mask_record_call([{<<"Media-Name">>, MediaName}], Call),
@@ -1529,10 +1550,24 @@ mask_recording(OriginalCall) ->
             API = props:filter_undefined([{<<"Media-Name">>, MediaName}]),
             kapps_call_command:mask_record_call(API, Call),
             Call
-    end.
+    end;
+mask_recording(LegId, OriginalCall, _CallId) ->
+    API = [{<<"Call-ID">>, LegId}],
+    kapps_call_command:mask_record_call(API, OriginalCall),
+    OriginalCall.
 
 -spec unmask_recording(call()) -> call().
 unmask_recording(OriginalCall) ->
+    unmask_recording(call_id(OriginalCall), OriginalCall).
+
+-spec unmask_recording(kz_term:api_ne_binary(), call()) -> call().
+unmask_recording(LegId, OriginalCall) ->
+    unmask_recording(LegId, OriginalCall, call_id(OriginalCall)).
+
+-spec unmask_recording(kz_term:api_ne_binary(), call(), kz_term:ne_binary()) -> call().
+unmask_recording('undefined', OriginalCall, CallId) ->
+    unmask_recording(CallId, OriginalCall, CallId);
+unmask_recording(CallId, OriginalCall, CallId) ->
     case retrieve_recording(OriginalCall) of
         {'ok', {MediaName, _RecorderPid}, Call} ->
             kapps_call_command:unmask_record_call([{<<"Media-Name">>, MediaName}], Call),
@@ -1542,7 +1577,11 @@ unmask_recording(OriginalCall) ->
             API = props:filter_undefined([{<<"Media-Name">>, MediaName}]),
             kapps_call_command:unmask_record_call(API, Call),
             Call
-    end.
+    end;
+unmask_recording(LegId, OriginalCall, _CallId) ->
+    API = [{<<"Call-ID">>, LegId}],
+    kapps_call_command:unmask_record_call(API, OriginalCall),
+    OriginalCall.
 
 -spec store_recording(kz_term:ne_binary(), pid(), call()) -> call().
 store_recording(MediaName, Pid, Call) ->
@@ -1570,7 +1609,7 @@ get_recordings(Call) ->
         Q -> Q
     end.
 
--spec inception_type(call()) -> kz_term:api_binary().
+-spec inception_type(call()) -> kz_term:ne_binary().
 inception_type(#kapps_call{inception='undefined'}) -> <<"onnet">>;
 inception_type(#kapps_call{}) -> <<"offnet">>.
 

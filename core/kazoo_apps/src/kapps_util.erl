@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Utilities shared by a subset of `kapps'.
 %%% @author James Aimonetti
 %%% @author Karl Anderson
@@ -48,8 +48,16 @@
 -export([to_magic_hash/1
         ,from_magic_hash/1
         ]).
+-export([get_application/0
+        ,put_application/1
+        ]).
 
 -include("kazoo_apps.hrl").
+
+-type not_enabled_error() :: 'device_disabled' |
+                             'owner_disabled' |
+                             'account_disabled'.
+-export_type([not_enabled_error/0]).
 
 -define(REPLICATE_ENCODING, 'encoded').
 -define(AGG_LIST_BY_REALM, <<"accounts/listing_by_realm">>).
@@ -105,7 +113,7 @@ replicate_from_accounts(TargetDb, FilterDoc) when is_binary(FilterDoc) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec replicate_from_account(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-                                    'ok' | {'error', 'matching_dbs'}.
+          'ok' | {'error', 'matching_dbs'}.
 replicate_from_account(AccountDb, AccountDb, _) ->
     lager:debug("requested to replicate from db ~s to self, skipping", [AccountDb]),
     {'error', 'matching_dbs'};
@@ -131,7 +139,7 @@ replicate_from_account(AccountDb, TargetDb, FilterDoc) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_master_account_id() -> {'ok', kz_term:ne_binary()} |
-                                 {'error', atom()}.
+          {'error', atom()}.
 get_master_account_id() ->
     case kapps_config:get_ne_binary(?KZ_ACCOUNTS_DB, <<"master_account_id">>) of
         'undefined' ->
@@ -157,7 +165,7 @@ find_master_account_id({'ok', Accounts}) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_master_account_db() -> {'ok', kz_term:ne_binary()} |
-                                 {'error', any()}.
+          {'error', any()}.
 get_master_account_db() ->
     case get_master_account_id() of
         {'error', _}=E -> E;
@@ -217,8 +225,8 @@ account_has_descendants(Account) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec find_oldest_doc(kz_json:objects()) ->
-                             {'ok', kz_term:ne_binary()} |
-                             {'error', 'no_docs'}.
+          {'ok', kz_term:ne_binary()} |
+          {'error', 'no_docs'}.
 find_oldest_doc([]) -> {'error', 'no_docs'};
 find_oldest_doc([First|Docs]) ->
     {_, OldestDocID} =
@@ -343,75 +351,72 @@ get_account_by_realm(RawRealm) ->
     Realm = kz_term:to_lower_binary(RawRealm),
     get_accounts_by(Realm, ?ACCT_BY_REALM_CACHE(Realm), ?AGG_LIST_BY_REALM).
 
--spec get_ccvs_by_ip(kz_term:ne_binary()) ->
-                            {'ok', kz_term:proplist()} |
-                            {'error', 'not_found'}.
+-type get_by_ip_errors() :: {'error', 'not_found'} |
+                            {'error', {not_enabled_error(), kz_term:ne_binary()}}.
+-type get_by_ip_return() :: {'ok', kz_term:proplist()} |
+                            get_by_ip_errors().
+-spec get_ccvs_by_ip(kz_term:ne_binary()) -> get_by_ip_return().
 get_ccvs_by_ip(IP) ->
     Test = ets:lookup(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP)),
     lager:debug("BNP Peeking... (~p) -> (~p)", [[?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP)], Test]),
     case kz_cache:peek_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP)) of
-        {'ok', {'error', 'not_found'}=_E} -> do_get_ccvs_by_ip(IP);
         {'error', 'not_found'} -> do_get_ccvs_by_ip(IP);
-        {'ok', _AccountCCVs} = OK -> OK
+        {'ok', {'error', _Reason}=E} -> E;
+        {'ok', {'ok', _AccountCCVs}=Ok} -> Ok
     end.
 
--spec do_get_ccvs_by_ip(kz_term:ne_binary()) ->
-                               {'ok', kz_term:proplist()} |
-                               {'error', 'not_found'}.
+-spec do_get_ccvs_by_ip(kz_term:ne_binary()) -> get_by_ip_return().
 do_get_ccvs_by_ip(IP) ->
+    NotFound = {'error', 'not_found'},
     case kapps_config:get_is_true(<<"registrar">>, <<"use_aggregate">>, 'true')
         andalso kz_datamgr:get_results(?KZ_SIP_DB, ?AGG_LIST_BY_IP, [{'key', IP}])
     of
         'false' ->
-            NotF = {'error', 'not_found'},
             lager:debug("aggregate SIP auth db disabled, skipping CCV lookup by IP ~s", [IP]),
-            kz_cache:store_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP), NotF),
-            NotF;
+            kz_cache:store_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP), NotFound),
+            NotFound;
         {'ok', []} ->
-            NotF = {'error', 'not_found'},
             lager:debug("no entry in ~s for IP: ~s", [?KZ_SIP_DB, IP]),
-            kz_cache:store_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP), NotF),
-            NotF;
+            kz_cache:store_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP), NotFound),
+            NotFound;
         {'ok', [Doc|_]} ->
             lager:debug("found IP ~s in db ~s (~s)", [IP, ?KZ_SIP_DB, kz_doc:id(Doc)]),
-            AccountCCVs = account_ccvs_from_ip_auth(Doc),
-            kz_cache:store_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP), AccountCCVs),
-            {'ok', AccountCCVs};
+            Result = account_ccvs_from_ip_auth(Doc),
+            kz_cache:store_local(?KAPPS_GETBY_CACHE, ?ACCT_BY_IP_CACHE(IP), Result),
+            Result;
         {'error', _E} = Error ->
             lager:debug("error looking up by IP: ~s: ~p", [IP, _E]),
             Error
     end.
 
--spec account_ccvs_from_ip_auth(kz_json:object()) -> kz_term:proplist().
+-spec account_ccvs_from_ip_auth(kz_json:object()) -> get_by_ip_return().
 account_ccvs_from_ip_auth(Doc) ->
     AccountId = kz_json:get_value([<<"value">>, <<"account_id">>], Doc),
     OwnerId = kz_json:get_value([<<"value">>, <<"owner_id">>], Doc),
     AuthType = kz_json:get_value([<<"value">>, <<"authorizing_type">>], Doc, <<"anonymous">>),
-
     case are_all_enabled([{<<"account">>, AccountId}
                          ,{<<"owner">>, OwnerId}
                          ,{AuthType, kz_doc:id(Doc)}
                          ])
     of
-        {'false', _Reason} ->
-            lager:notice("no IP auth info: ~p", [_Reason]),
-            [];
+        {'false', Reason} ->
+            lager:notice("no IP auth info: ~p", [Reason]),
+            {'error', Reason};
         'true' ->
-            props:filter_undefined(
-              [{<<"Account-ID">>, AccountId}
-              ,{<<"Owner-ID">>, OwnerId}
-              ,{<<"Authorizing-ID">>, kz_doc:id(Doc)}
-              ,{<<"Inception">>, <<"on-net">>}
-              ,{<<"Authorizing-Type">>, AuthType}
-              ])
+            AccountCCVs =
+                props:filter_undefined(
+                  [{<<"Account-ID">>, AccountId}
+                  ,{<<"Owner-ID">>, OwnerId}
+                  ,{<<"Authorizing-ID">>, kz_doc:id(Doc)}
+                  ,{<<"Inception">>, <<"on-net">>}
+                  ,{<<"Authorizing-Type">>, AuthType}
+                  ]),
+            {'ok', AccountCCVs}
     end.
 
--type not_enabled_error() :: 'device_disabled' |
-                             'owner_disabled' |
-                             'account_disabled'.
 -spec are_all_enabled(kz_term:proplist()) ->
-                             'true' |
-                             {'false', {not_enabled_error(), kz_term:ne_binary()}}.
+          'true' |
+          {'false', {not_enabled_error(), kz_term:ne_binary()}}.
 are_all_enabled(Things) ->
     ?MATCH_ACCOUNT_RAW(AccountId) = props:get_value(<<"account">>, Things),
     try lists:all(fun(Thing) -> is_enabled(AccountId, Thing) end, Things)
@@ -563,7 +568,7 @@ rm_aggregate_device(Db, Device) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_destination(kz_json:object(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-                             {kz_term:ne_binary(), kz_term:ne_binary()}.
+          {kz_term:api_binary(), kz_term:api_binary()}.
 get_destination(JObj, Cat, Key) ->
     case kapps_config:get(Cat, Key, <<"Request">>) of
         <<"To">> ->
@@ -573,7 +578,7 @@ get_destination(JObj, Cat, Key) ->
     end.
 
 -spec get_destination(kz_json:object(), kz_term:ne_binaries()) ->
-                             {kz_term:ne_binary(), kz_term:ne_binary()}.
+          {kz_term:api_binary(), kz_term:api_binary()}.
 get_destination(JObj, [Key|Keys]) ->
     case maybe_split(Key, JObj) of
         [User,Realm] -> {User,Realm};
@@ -584,16 +589,17 @@ get_destination(JObj, []) ->
     ,kz_json:get_value(<<"To-Realm">>, JObj)
     }.
 
+-spec maybe_split(kz_json:get_key(), kz_json:object()) -> kz_term:api_binaries().
 maybe_split(Key, JObj) ->
     case kz_json:get_ne_binary_value(Key, JObj) of
-        undefined -> undefined;
-        <<"nouser@",_/binary>> -> undefined;
+        'undefined' -> 'undefined';
+        <<"nouser@",_/binary>> -> 'undefined';
         Bin -> binary:split(Bin, <<"@">>)
     end.
 
 -spec write_tts_file(kz_term:ne_binary(), kz_term:ne_binary()) ->
-                            'ok' |
-                            {'error', file:posix() | 'badarg' | 'terminated'}.
+          'ok' |
+          {'error', file:posix() | 'badarg' | 'terminated'}.
 write_tts_file(Path, Say) ->
     lager:debug("trying to save TTS media to ~s", [Path]),
     {'ok', _, Wav} = kazoo_tts:create(Say),
@@ -606,3 +612,22 @@ to_magic_hash(Bin) ->
 -spec from_magic_hash(kz_term:ne_binary()) -> kz_term:ne_binary().
 from_magic_hash(Bin) ->
     zlib:unzip(kz_binary:from_hex(Bin)).
+
+-spec get_application() -> atom().
+get_application() ->
+    case get('application') of
+        'undefined' -> find_application();
+        Application -> Application
+    end.
+
+-spec find_application() -> atom().
+find_application() ->
+    case application:get_application() of
+        {'ok', Application} ->
+            Application;
+        _Else -> 'undefined'
+    end.
+
+-spec put_application(atom()) -> atom().
+put_application(Application) ->
+    put('application', Application).

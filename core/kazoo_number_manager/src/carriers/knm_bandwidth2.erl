@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc Handle client requests for phone_number documents using new bandwidth api
 %%% @author Karl Anderson
 %%% @author Mark Magnusson
@@ -121,9 +121,9 @@ is_number_billable(_Number) -> 'true'.
 %% @doc Check with carrier if these numbers are registered with it.
 %% @end
 %%------------------------------------------------------------------------------
--spec check_numbers(kz_term:ne_binaries()) -> {ok, kz_json:object()} |
-                                              {error, any()}.
-check_numbers(_Numbers) -> {error, not_implemented}.
+-spec check_numbers(kz_term:ne_binaries()) -> {'ok', kz_json:object()} |
+          {'error', 'not_implemented'}.
+check_numbers(_Numbers) -> {'error', 'not_implemented'}.
 
 %%------------------------------------------------------------------------------
 %% @doc Query the Bandwidth.com system for a quantity of available numbers
@@ -464,11 +464,7 @@ tollfree_search_response_to_KNM(Xml, QID) ->
 %% @doc Convert a rate center XML entity to json
 %% @end
 %%------------------------------------------------------------------------------
--spec rate_center_to_json(kz_types:xml_els() | kz_types:xml_el()) -> kz_json:object().
-rate_center_to_json([]) ->
-    kz_json:new();
-rate_center_to_json([Xml]) ->
-    rate_center_to_json(Xml);
+-spec rate_center_to_json(kz_types:xml_el()) -> kz_json:object().
 rate_center_to_json(Xml) ->
     kz_json:from_list(
       props:filter_empty(
@@ -485,7 +481,7 @@ rate_center_to_json(Xml) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec verify_response(kz_types:xml_el()) -> {'ok', kz_types:xml_el()} |
-                                            {'error', any()}.
+          {'error', any()}.
 verify_response(Xml) ->
     NPAPath = "count(//TelephoneNumberDetailList/TelephoneNumberDetail)",
     TollFreePath = "count(//TelephoneNumberList/TelephoneNumber)",

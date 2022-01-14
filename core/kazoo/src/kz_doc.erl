@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Utilities for manipulating Kazoo documents.
 %%% @author Edouard Swiac
 %%% @author James Aimonetti
@@ -15,6 +15,7 @@
         ,path_id/0
         ]).
 -export([revision/1
+        ,revision_id/1
         ,set_revision/2
         ,delete_revision/1
         ,path_revision/0
@@ -106,6 +107,8 @@
         ,setters/2
         ]).
 
+-export([are_equal/2]).
+
 -ifdef(TEST).
 -export([remove_pvt/1]).
 -endif.
@@ -196,6 +199,14 @@ path_id() ->
 -spec revision(doc()) -> kz_term:api_binary().
 revision(JObj) ->
     kz_json:get_first_defined([?KEY_REV, <<"rev">>], JObj).
+
+-spec revision_id(doc() | kz_term:api_ne_binary()) -> non_neg_integer().
+revision_id('undefined') -> 0;
+revision_id(<<Rev/binary>>) ->
+    [Id, _] = binary:split(Rev, <<"-">>),
+    kz_term:to_integer(Id);
+revision_id(JObj) ->
+    revision_id(revision(JObj)).
 
 -spec path_revision() -> kz_json:path().
 path_revision() ->
@@ -666,7 +677,7 @@ add_pvt_created(Acc, JObj, _, Opts) ->
 
 -spec add_pvt_modified(kz_term:proplist(), doc(), kz_term:api_ne_binary(), kz_term:proplist()) -> kz_term:proplist().
 add_pvt_modified(Acc, _JObj, _, Opts) ->
-    [{?KEY_MODIFIED, props:get_value('now', Opts)} | Acc].
+    [{?KEY_MODIFIED, props:get_value('now', Opts, kz_time:now_s())} | Acc].
 
 -spec add_id(kz_term:proplist(), doc(), any(), kz_term:proplist()) -> kz_term:proplist().
 add_id(Acc, _JObj, _, Opts) ->
@@ -844,3 +855,30 @@ setters(JObj, Routines) ->
                ,JObj
                ,Routines
                ).
+
+%%------------------------------------------------------------------------------
+%% @doc Compare documents for equality
+%%
+%% Two documents are considered equal if their public fields match and
+%% their attachments metadata match
+%% @end
+%%------------------------------------------------------------------------------
+-spec are_equal(doc(), doc()) -> boolean().
+are_equal(FirstDoc, SecondDoc) ->
+    lists:all(fun(F) -> F(FirstDoc, SecondDoc) end
+             ,[fun are_equal_public/2
+              ,fun are_equal_attachments/2
+              ]
+             ).
+
+-spec are_equal_public(doc(), doc()) -> boolean().
+are_equal_public(FirstDoc, SecondDoc) ->
+    FirstPublic = public_fields(FirstDoc),
+    SecondPublic = public_fields(SecondDoc),
+    kz_json:are_equal(FirstPublic, SecondPublic).
+
+-spec are_equal_attachments(doc(), doc()) -> boolean().
+are_equal_attachments(FirstDoc, SecondDoc) ->
+    FirstAtts = attachments(FirstDoc),
+    SecondAtts = attachments(SecondDoc),
+    kz_json:are_equal(FirstAtts, SecondAtts).

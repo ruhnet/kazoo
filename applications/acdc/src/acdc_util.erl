@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc
 %%% @author James Aimonetti
 %%% @end
@@ -17,6 +17,10 @@
         ,agent_presence_update/2
         ,presence_update/3, presence_update/4
         ,send_cdr/2
+        ,caller_id/1
+        ,hangup_cause/1
+        ,max_priority/2
+        ,queue_remove/2
         ]).
 
 -include("acdc.hrl").
@@ -79,12 +83,16 @@ send_cdr(Url, JObj, Retries) ->
     end.
 
 %% Returns the list of agents configured for the queue
--spec agents_in_queue(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_json:path().
+-spec agents_in_queue(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_json:objects().
 agents_in_queue(AcctDb, QueueId) ->
-    case kz_datamgr:get_results(AcctDb, <<"queues/agents_listing">>, [{'key', QueueId}]) of
-        {'ok', []} -> [];
+    case kz_datamgr:get_results(AcctDb, <<"queues/agents_listing">>
+                               ,[{'startkey', [QueueId]}
+                                ,{'endkey', [QueueId, kz_json:new()]}
+                                ,{'reduce', 'false'}
+                                ])
+    of
         {'error', _E} -> lager:debug("failed to lookup agents for ~s: ~p", [QueueId, _E]), [];
-        {'ok', As} -> [kz_json:get_value(<<"value">>, A) || A <- As]
+        {'ok', As} -> As
     end.
 
 -spec agent_devices(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_json:objects().
@@ -98,7 +106,7 @@ agent_devices(AcctDb, AgentId) ->
     end.
 
 -spec get_endpoints(kapps_call:call(), kz_term:ne_binary() | kazoo_data:get_results_return()) ->
-                           kz_json:objects().
+          kz_json:objects().
 get_endpoints(Call, ?NE_BINARY = AgentId) ->
     Params = kz_json:from_list([{<<"source">>, kz_term:to_binary(?MODULE)}]),
     kz_endpoints:by_owner_id(AgentId, Params, Call).
@@ -134,3 +142,40 @@ proc_id(Pid) -> proc_id(Pid, node()).
 
 -spec proc_id(pid(), atom() | kz_term:ne_binary()) -> kz_term:ne_binary().
 proc_id(Pid, Node) -> list_to_binary([kz_term:to_binary(Node), "-", pid_to_list(Pid)]).
+
+-spec caller_id(kapps_call:call()) -> {kz_term:api_binary(), kz_term:api_binary()}.
+caller_id(Call) ->
+    CallerIdType = case kapps_call:inception(Call) of
+                       'undefined' -> <<"internal">>;
+                       _Else -> <<"external">>
+                   end,
+    kz_attributes:caller_id(CallerIdType, Call).
+
+-spec hangup_cause(kz_json:object()) -> kz_term:ne_binary().
+hangup_cause(JObj) ->
+    case kz_json:get_ne_binary_value(<<"Hangup-Cause">>, JObj) of
+        'undefined' -> <<"unknown">>;
+        Cause -> Cause
+    end.
+
+-spec max_priority(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_term:api_integer().
+max_priority(AccountDb, QueueId) ->
+    case kz_datamgr:open_cache_doc(AccountDb, QueueId) of
+        {'ok', QueueJObj} -> max_priority(QueueJObj);
+        _ -> 'undefined'
+    end.
+
+-spec max_priority(kz_json:object()) -> kz_term:api_integer().
+max_priority(QueueJObj) ->
+    kz_json:get_integer_value(<<"max_priority">>, QueueJObj).
+
+%%------------------------------------------------------------------------------
+%% @doc Remove `Term' from `Queue', returning a tuple where the 1st element is
+%% true if `Term' was found and removed and the 2nd element is the updated
+%% queue.
+%% @end
+%%------------------------------------------------------------------------------
+-spec queue_remove(any(), queue:queue()) -> {boolean(), queue:queue()}.
+queue_remove(Term, Queue) ->
+    Queue1 = queue:filter(fun(Elem) -> Elem =/= Term end, Queue),
+    {Queue1 =/= Queue, Queue1}.

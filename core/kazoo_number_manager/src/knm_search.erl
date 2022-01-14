@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -235,11 +235,11 @@ first(Options) ->
     QID = query_id(Options),
     gen_listener:cast(?MODULE, {'reset_search', QID}),
     Self = self(),
-    Opts = [{'quantity', ?MAX_SEARCH}
-           ,{'offset', 0}
-           ,{'normalized_prefix', normalized_prefix(Options)}
-            | Options
-           ],
+    Defaults = [{'quantity', ?MAX_SEARCH}
+               ,{'offset', 0}
+               ,{'normalized_prefix', normalized_prefix(Options)}
+               ],
+    Opts = props:insert_values(Defaults, Options),
     lists:foreach(fun(Carrier) -> search_spawn(Self, Carrier, Opts) end, Carriers),
     wait_for_search(length(Carriers)),
     gen_listener:call(?MODULE, {'first', Options}).
@@ -259,7 +259,7 @@ search_carrier(Carrier, Options) ->
 wait_for_search(0) -> 'ok';
 wait_for_search(N) ->
     receive
-        {_Carrier, {ok, []}} ->
+        {_Carrier, {'ok', []}} ->
             lager:debug("~s found no numbers", [_Carrier]),
             wait_for_search(N - 1);
         {_Carrier, {'ok', Numbers}} ->
@@ -307,7 +307,7 @@ next(Options) ->
 %%------------------------------------------------------------------------------
 -ifndef(TEST).
 -spec create_discovery(kz_term:ne_binary(), module(), kz_json:object(), knm_number_options:options()) ->
-                              knm_number:knm_number().
+          knm_number:knm_number().
 create_discovery(DID=?NE_BINARY, Carrier, Data, Options0) ->
     Options = [{'state', ?NUMBER_STATE_DISCOVERY}
               ,{'module_name', kz_term:to_binary(Carrier)}

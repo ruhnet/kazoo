@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Util functions used by kazoo_couch.
 %%% @author James Aimonetti
 %%% @end
@@ -88,15 +88,15 @@ retry504s(Fun, Cnt) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec new_connection(couch_connection() | map()) ->
-                            server() |
-                            {'error', 'timeout' | 'ehostunreach' | _}.
+          server() |
+          {'error', 'timeout' | 'ehostunreach' | _}.
 new_connection(#{}=Map) ->
     connect(maps:fold(fun connection_parse/3, #kz_couch_connection{}, Map)).
 
--spec maybe_add_auth(string(), string(), kz_term:proplist()) -> kz_term:proplist().
-maybe_add_auth("", _Pass, Options) -> Options;
-maybe_add_auth(User, Pass, Options) ->
-    [{'basic_auth', {User, Pass}} | Options].
+-spec maybe_add_auth(string(), string(), string()) -> string() | binary().
+maybe_add_auth("", _Pass, Host) -> Host;
+maybe_add_auth(User, Pass, Host) ->
+    list_to_binary([kz_term:to_binary(User), ":", kz_term:to_binary(Pass), "@", Host]).
 
 check_options(Options) ->
     Routines = [fun convert_options/1
@@ -151,9 +151,9 @@ connection_parse(K, V, #kz_couch_connection{options=Options}=Conn) ->
     Conn#kz_couch_connection{options = [{K, V} | Options]}.
 
 -spec connect(couch_connection()) ->
-                     {'ok', server()} |
-                     {'error', 'timeout'} |
-                     {'error', 'ehostunreach'}.
+          {'ok', server()} |
+          {'error', 'timeout'} |
+          {'error', 'ehostunreach'}.
 connect(#kz_couch_connection{host=Host
                             ,port=Port
                             ,username=User
@@ -166,8 +166,8 @@ connect(#kz_couch_connection{host=Host
                ,password => Pass
                ,options => Options
                },
-    Opts = [{'connection_map', ConnMap} | maybe_add_auth(User, Pass, check_options(Options))],
-    Conn = couchbeam:server_connection(kz_term:to_list(Host), Port, <<>>, Opts),
+    Opts = [{'connection_map', ConnMap} | check_options(Options)],
+    Conn = couchbeam:server_connection(kz_term:to_list(maybe_add_auth(User, Pass, Host)), Port, <<>>, Opts),
     lager:debug("new connection to host ~s:~b, testing: ~p", [Host, Port, Conn]),
     connection_info(Conn).
 
@@ -182,7 +182,7 @@ add_couch_version(_, _, #server{options=Options}=Conn) ->
     Conn#server{options = props:set_value('driver_version', 'bigcouch', Options)}.
 
 -spec server_info(server()) -> {'ok', kz_json:object()} |
-                               {'error', any()}.
+          {'error', any()}.
 server_info(#server{}=Conn) -> couchbeam:server_info(Conn).
 
 -spec server_url(server()) -> kz_term:ne_binary().
@@ -335,8 +335,8 @@ maybe_add_rev(#db{name=_Name}=Db, DocId, Options) ->
     end.
 
 -spec do_fetch_rev(couchbeam_db(), kz_term:ne_binary()) ->
-                          kz_term:ne_binary() |
-                          couchbeam_error().
+          kz_term:ne_binary() |
+          couchbeam_error().
 do_fetch_rev(#db{}=Db, DocId) ->
     case kz_term:is_empty(DocId) of
         'true' -> {'error', 'empty_doc_id'};

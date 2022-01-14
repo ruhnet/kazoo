@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc Iterate over each account, find configured queues and configured
 %%% agents, and start the attendant processes
 %%%
@@ -85,7 +85,8 @@ init_acct_queues(AccountDb, AccountId) ->
 -spec init_acct_agents(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 init_acct_agents(AccountDb, AccountId) ->
     init_agents(AccountId
-               ,kz_datamgr:get_results(AccountDb, <<"queues/agents_listing">>, [])
+               ,kz_datamgr:get_results(AccountDb, <<"queues/agents_listing">>
+                                      ,[{'reduce', 'false'}])
                ).
 
 -spec init_queues(kz_term:ne_binary(), kazoo_data:get_results_return()) -> 'ok'.
@@ -96,7 +97,8 @@ init_queues(AccountId, {'error', 'gateway_timeout'}) ->
     wait_a_bit(),
     'ok';
 init_queues(AccountId, {'error', 'not_found'}) ->
-    lager:error("the queues view for ~s appears to be missing; you should probably fix that", [AccountId]);
+    lager:error("the queues view for ~s appears to be missing; you should probably fix that", [AccountId]),
+    'ok';
 init_queues(AccountId, {'error', _E}) ->
     lager:debug("error fetching queues: ~p", [_E]),
     try_queues_again(AccountId),
@@ -144,9 +146,10 @@ try_again(AccountId, F) ->
 spawn_previously_logged_in_agent(AccountId, AgentId) ->
     kz_util:spawn(
       fun() ->
-              case acdc_agent_util:most_recent_status(AccountId, AgentId) of
-                  {'ok', <<"logged_out">>} -> lager:debug("agent ~s in ~s is logged out, not starting", [AgentId, AccountId]);
-                  {'ok', _Status} -> acdc_agents_sup:new(AccountId, AgentId)
+              {'ok', Status} = acdc_agent_util:most_recent_status(AccountId, AgentId),
+              case acdc_agent_util:status_should_auto_start(Status) of
+                  'false' -> lager:debug("agent ~s in ~s is ~s, not starting", [AgentId, AccountId, Status]);
+                  'true' -> acdc_agents_sup:new(AccountId, AgentId)
               end
       end).
 

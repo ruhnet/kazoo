@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc data plan
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -13,9 +13,14 @@
         ,disallow_validation_overrides/0
         ]).
 
--export([init/0, reload/0, reload/1, reload/2, flush/0]).
+-export([init/0
+        ,reload/0, reload/1, reload/2
+        ,flush/0
+        ]).
 
 -export([reset_system_dataplan/0]).
+
+-on_load(onload/0).
 
 -include("kz_data.hrl").
 
@@ -189,16 +194,21 @@ dataplan_match(Classification, Plan, AccountId) ->
                                          ,<<"types">> := Types
                                          }
                      }
-     ,<<"connections">> := _GCon
-     ,<<"connections_map">> := GConMap
-     ,<<"attachments">> := GAtt
+     ,<<"connections">> := Connections
+     ,<<"connections_map">> := ConnectionsMap
+     ,<<"attachments">> := Attachments
      } = Plan,
 
     Tag = kz_term:to_atom(CCon, 'true'),
-    Server = maps:get(Tag, GConMap, #{}),
+    Server = maps:get(Tag, ConnectionsMap, #{}),
 
-    Others = [{kz_term:to_atom(T, 'true'), #{server => maps:get(kz_term:to_atom(T, 'true'), GConMap, #{})}}
-              || {_, #{<<"connection">> := T}} <- lists:usort(maps:to_list(Types)), T =/= CCon],
+    Others = [{kz_term:to_atom(T, 'true')
+              ,#{server => maps:get(kz_term:to_atom(T, 'true'), ConnectionsMap, #{})}
+              }
+              || {_, #{<<"connection">> := T}} <- lists:usort(maps:to_list(Types)),
+                 T =/= CCon,
+                 'undefined' =/= maps:get(T, Connections, 'undefined')
+             ],
 
     case maps:get(<<"handler">>, CAtt, 'undefined') of
         'undefined' ->
@@ -212,7 +222,7 @@ dataplan_match(Classification, Plan, AccountId) ->
             #{AttConnection := #{<<"handler">> := AttHandlerBin
                                 ,<<"settings">> := AttSettings
                                 }
-             } = GAtt,
+             } = Attachments,
             AttHandler = kz_term:to_atom(<<"kz_att_", AttHandlerBin/binary>>,'true'),
             Params = maps:merge(AttSettings, maps:get(<<"params">>, CAtt, #{})),
 
@@ -228,56 +238,56 @@ dataplan_match(Classification, Plan, AccountId) ->
              }
     end.
 
-
 -spec dataplan_type_match(kz_term:ne_binary(), kz_term:ne_binary(), map()) -> map().
 dataplan_type_match(Classification, DocType, Plan) ->
     dataplan_type_match(Classification, DocType, Plan, 'undefined').
 
 -spec dataplan_type_match(kz_term:ne_binary(), kz_term:ne_binary(), map(), kz_term:api_binary()) -> map().
 dataplan_type_match(Classification, DocType, Plan, AccountId) ->
-    #{<<"plan">> := #{Classification := #{<<"types">> := Types
-                                         ,<<"connection">> := CCon
-                                         ,<<"attachments">> := CAtt
+    #{<<"plan">> := #{Classification := #{<<"types">> := DocTypes
+                                         ,<<"connection">> := ClassificationConnection
+                                         ,<<"attachments">> := ClassificationAttachments
                                          }
                      }
-     ,<<"connections">> := _GCon
-     ,<<"connections_map">> := GConMap
-     ,<<"attachments">> := GAtt
+     ,<<"connections">> := _Connections
+     ,<<"connections_map">> := ConnectionsMap
+     ,<<"attachments">> := Attachments
      } = Plan,
 
-    TypeMap = maps:get(DocType, Types, #{}),
+    TypeMap = maps:get(DocType, DocTypes, #{}),
 
-    Tag = kz_term:to_atom(maps:get(<<"connection">>, TypeMap, CCon), 'true'),
-    Server = maps:get(Tag, GConMap, #{}),
+    ClassificationTag = kz_term:to_atom(maps:get(<<"connection">>, TypeMap, ClassificationConnection), 'true'),
+    Server = maps:get(ClassificationTag, ConnectionsMap, #{}),
 
-    TypeAttMap = maps:merge(CAtt, maps:get(<<"attachments">>, TypeMap, #{})),
+    TypeAttMap = maps:merge(ClassificationAttachments, maps:get(<<"attachments">>, TypeMap, #{})),
     case maps:get(<<"handler">>, TypeAttMap, 'undefined') of
         'undefined' ->
-            #{tag => Tag, server => Server
+            #{tag => ClassificationTag
+             ,server => Server
              ,classification => Classification
              ,doc_type => DocType
              ,account_id => AccountId
              };
-        AttConnection ->
-            #{AttConnection := #{<<"handler">> := AttHandlerBin
-                                ,<<"settings">> := AttSettings
-                                }
-             } = GAtt,
-            AttHandler = kz_term:to_atom(<<"kz_att_", AttHandlerBin/binary>>,'true'),
-            Params = maps:merge(AttSettings, maps:get(<<"params">>, TypeAttMap, #{})),
-            #{tag => Tag
+        AttachmentConnection ->
+            #{AttachmentConnection := #{<<"handler">> := AttachmentHandlerBin
+                                       ,<<"settings">> := AttachmentSettings
+                                       }
+             } = Attachments,
+            AttachmentHandler = kz_term:to_atom(<<"kz_att_", AttachmentHandlerBin/binary>>,'true'),
+            Params = maps:merge(AttachmentSettings, maps:get(<<"params">>, TypeAttMap, #{})),
+            #{tag => ClassificationTag
              ,server => Server
              ,att_proxy => 'true'
              ,att_post_handler => att_post_handler(TypeAttMap)
-             ,att_handler => {AttHandler, kz_maps:keys_to_atoms(Params)}
-             ,att_handler_id => AttConnection
+             ,att_handler => {AttachmentHandler, kz_maps:keys_to_atoms(Params)}
+             ,att_handler_id => AttachmentConnection
              ,classification => Classification
              ,doc_type => DocType
              ,account_id => AccountId
              }
     end.
 
--spec att_post_handler(map()) -> atom().
+-spec att_post_handler(map()) -> 'stub' | 'external'.
 att_post_handler(#{<<"stub">> := 'true'}) -> 'stub';
 att_post_handler(#{}) -> 'external'.
 
@@ -319,7 +329,7 @@ cache_dataplan(?SYSTEM_DATAPLAN=Key, PlanJObj) ->
     Plan2 = maps:merge(Plan, #{<<"connections_map">> => maps:from_list(Connections)}),
     CacheProps = [{'expires','infinity'}],
     kz_cache:store_local(?KAZOO_DATA_PLAN_CACHE, {'plan', Key}, Plan2, CacheProps),
-    Plan;
+    Plan2;
 cache_dataplan({_AccountId, StorageId} = Key, PlanJObj) ->
     Plan = kz_json:to_map(PlanJObj),
     Connections = dataplan_connections(Plan),
@@ -329,7 +339,7 @@ cache_dataplan({_AccountId, StorageId} = Key, PlanJObj) ->
                  ,{'callback', fun cache_callback/3}
                  ],
     kz_cache:store_local_async(?KAZOO_DATA_PLAN_CACHE, {'plan', Key}, Plan2, CacheProps),
-    Plan;
+    Plan2;
 cache_dataplan(Key, PlanJObj) ->
     Plan = kz_json:to_map(PlanJObj),
     Connections = dataplan_connections(Plan),
@@ -339,7 +349,7 @@ cache_dataplan(Key, PlanJObj) ->
                  ,{'callback', fun cache_callback/3}
                  ],
     kz_cache:store_local_async(?KAZOO_DATA_PLAN_CACHE, {'plan', Key}, Plan2, CacheProps),
-    Plan.
+    Plan2.
 
 -spec cache_callback({'plan', kz_term:ne_binary()} | 'system', map(), atom()) -> 'ok'.
 cache_callback('system', _V, 'erase') ->
@@ -348,12 +358,12 @@ cache_callback('system', _V, 'erase') ->
 %% cache_callback({'plan', ?SYSTEM_DATAPLAN}, _V, 'erase') ->
 %%     lager:warning("received dataplan cache update for system plan"),
 %%     reload();
-cache_callback({'plan', {AccountId, StorageId}}, _V, 'erase') ->
-    lager:warning("received dataplan cache update for account ~s/~s", [AccountId, StorageId]),
+cache_callback({'plan', {AccountId, StorageId}}, _V, _Type) ->
+    lager:warning("received dataplan cache '~s' for account ~s/~s", [_Type, AccountId, StorageId]),
     _ = load_dataplan({AccountId, StorageId}, fun fetch_storage_dataplan/1),
     'ok';
-cache_callback({'plan', AccountId}, _V, 'erase') ->
-    lager:warning("received dataplan cache update for account ~s", [AccountId]),
+cache_callback({'plan', AccountId}, _V, _Type) ->
+    lager:warning("received dataplan cache '~s' for account ~s", [_Type, AccountId]),
     load_account(AccountId);
 cache_callback('system', _V, 'flush') ->
     lager:warning("received dataplan cache update for system plan document"),
@@ -361,13 +371,6 @@ cache_callback('system', _V, 'flush') ->
 %% cache_callback({'plan', ?SYSTEM_DATAPLAN}, _V, 'flush') ->
 %%     lager:warning("received flush dataplan cache for system plan"),
 %%     reload();
-cache_callback({'plan', {AccountId, StorageId}}, _V, 'flush') ->
-    lager:warning("received flush dataplan cache for account ~s/~s", [AccountId, StorageId]),
-    _ = load_dataplan({AccountId, StorageId}, fun fetch_storage_dataplan/1),
-    'ok';
-cache_callback({'plan', AccountId}, _V, 'flush') ->
-    lager:warning("received flush dataplan cache for account ~s", [AccountId]),
-    load_account(AccountId);
 cache_callback(_Key, _V, _Action) ->
     lager:warning_unsafe("unhandled cache callback : ~p , ~p , ~p", [_Key, _V, _Action]).
 
@@ -484,31 +487,58 @@ start_connection(Tag, Params) ->
 
 -spec init() -> 'ok'.
 init() ->
+    lager:debug("initializing plans"),
+    kazoo_bindings:flush_mod(?MODULE),
     reload(),
     bind().
+
+-spec onload() -> 'ok'.
+onload() ->
+    onload(kazoo_bindings:is_running()).
+
+-spec onload(boolean()) -> 'ok'.
+onload('false') -> 'ok';
+onload('true') ->
+    _P = kz_util:spawn(fun init/0),
+    lager:debug("module ~s reloaded", [?MODULE_STRING]).
 
 -spec bind() -> 'ok'.
 -ifdef(TEST).
 bind() -> 'ok'.
 -else.
 bind() ->
+    Bindings = [{<<"doc_created">>, fun handle_created/1}
+               ,{<<"doc_deleted">>, fun handle_deleted/1}
+               ],
+    lists:foreach(fun bind_for/1, Bindings).
+
+bind_for({Type, Fun}) ->
     RK = kz_binary:join([<<"kapi.conf">>
                         ,kz_term:to_binary(?KAZOO_DATA_PLAN_CACHE)
                         ,?KZ_DATA_DB
                         ,<<"storage">>
-                        ,<<"doc_created">>
+                        ,Type
                         ,<<"*">>
-                        ], <<".">>),
-    lager:debug("binding for new storage: ~s", [RK]),
-    kazoo_bindings:bind(RK, fun handle_new/1).
+                        ]
+                       ,<<".">>
+                       ),
+    lager:debug("binding for storage doc events: ~s", [RK]),
+    kazoo_bindings:bind(RK, ?MODULE, Fun).
 
--spec handle_new(kz_json:objects()) -> 'ok'.
-handle_new([JObj]) ->
-    ID = kz_json:get_ne_binary_value(<<"ID">>, JObj),
-    lager:warning("received new storage ~s", [ID]),
-    case kz_datamgr:open_cache_doc(?KZ_DATA_DB, ID) of
-        {'ok', Doc} -> load_account_or_storage(kz_doc:account_id(Doc), ID);
-        {'error', _ERR} -> lager:error("error fetching storage doc ~s", [ID])
+-spec handle_created(kz_term:api_ne_binary() | kz_json:object() | kz_json:objects()) -> 'ok'.
+handle_created('undefined') -> 'ok';
+handle_created(<<Id/binary>>) ->
+    lager:warning("received new storage ~s", [Id]),
+    case kz_datamgr:open_cache_doc(?KZ_DATA_DB, Id) of
+        {'ok', Doc} -> load_account_or_storage(kz_doc:account_id(Doc), Id);
+        {'error', _ERR} -> lager:error("error fetching storage doc ~s", [Id])
+    end;
+handle_created([JObj]) ->
+    handle_created(JObj);
+handle_created(JObj) ->
+    case kz_doc:type(JObj) of
+        <<"storage">> -> load_account_or_storage(kz_doc:account_id(JObj), kz_doc:id(JObj));
+        _Type -> handle_created(kz_json:get_ne_binary_value(<<"ID">>, JObj))
     end.
 
 -spec load_account_or_storage(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
@@ -516,6 +546,18 @@ load_account_or_storage(AccountId, AccountId) ->
     load_account(AccountId);
 load_account_or_storage(AccountId, StorageId) ->
     load_storage(AccountId, StorageId).
+
+-spec handle_deleted(kz_term:api_ne_binary() | kz_json:object() | kz_json:objects()) -> 'ok'.
+handle_deleted('undefined') -> 'ok';
+handle_deleted(<<Id/binary>>) ->
+    kz_cache:erase_local(?KAZOO_DATA_PLAN_CACHE, {'plan', Id});
+handle_deleted([JObj]) ->
+    handle_deleted(JObj);
+handle_deleted(JObj) ->
+    case kz_doc:type(JObj) of
+        <<"storage">> -> handle_deleted(kz_doc:id(JObj));
+        _Type -> handle_deleted(kz_json:get_ne_binary_value(<<"ID">>, JObj))
+    end.
 
 -endif.
 
@@ -571,7 +613,7 @@ load_account_storage(AccountId) ->
     case kz_datamgr:get_result_ids(?KZ_DATA_DB, ?KZS_PLAN_ACCOUNT_VIEW, [{'key', AccountId}]) of
         {'ok', []} -> 'ok';
         {'ok', StorageIds} -> load_account_storage(AccountId, StorageIds);
-        Error -> lager:error_unsafe("error reloading dataplans ~p", [Error])
+        Error -> lager:error("error reloading account ~s dataplan: ~p", [AccountId, Error])
     end.
 
 -spec load_account_storage(kz_term:ne_binary(), kz_term:ne_binaries()) -> 'ok'.

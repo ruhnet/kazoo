@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc Collector of stats
 %%% @author James Aimonetti
 %%% @author Sponsored by GTNetwork LLC, Implemented by SIPLABS LLC
@@ -83,7 +83,7 @@ call_waiting(AccountId, QueueId, CallId, CallerIdName, CallerIdNumber, CallerPri
     call_state_change(AccountId, 'waiting', Prop),
     'ok' = kz_amqp_worker:cast(Prop, fun kapi_acdc_stats:publish_call_waiting/1).
 
--spec call_abandoned(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), atom()) -> 'ok'.
+-spec call_abandoned(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 call_abandoned(AccountId, QueueId, CallId, Reason) ->
     Prop = props:filter_undefined(
              [{<<"Account-ID">>, AccountId}
@@ -278,7 +278,6 @@ call_table_opts() ->
                      ,[{<<"acdc_status_stat">>, <<"ready">>}
                       ,{<<"acdc_status_stat">>, <<"logged_in">>}
                       ,{<<"acdc_status_stat">>, <<"logged_out">>}
-                      ,{<<"acdc_status_stat">>, <<"pending_logged_out">>}
                       ,{<<"acdc_status_stat">>, <<"connecting">>}
                       ,{<<"acdc_status_stat">>, <<"connected">>}
                       ,{<<"acdc_status_stat">>, <<"wrapup">>}
@@ -412,9 +411,9 @@ handle_cast({'remove_call', [{M, P, _}]}, State) ->
         andalso lager:debug("removed calls: ~p", [N]),
     {'noreply', State};
 
-handle_cast({'update_status', Id, Updates}, State) ->
+handle_cast({'update_status', Id, Key, Updates}, State) ->
     lager:debug("updating status stat ~s: ~p", [Id, Updates]),
-    ets:update_element(acdc_agent_stats:status_table_id(), Id, Updates),
+    ets:update_element(acdc_agent_stats:status_table_id(), Key, Updates),
     {'noreply', State};
 handle_cast({'remove_status', [{M, P, _}]}, State) ->
     Match = [{M, P, ['true']}],
@@ -478,8 +477,8 @@ call_build_match_spec(JObj) ->
     end.
 
 -spec call_build_match_spec(kz_json:object(), {call_stat(), list()}) ->
-                                   {'ok', ets:match_spec()} |
-                                   {'error', kz_json:object()}.
+          {'ok', ets:match_spec()} |
+          {'error', kz_json:object()}.
 call_build_match_spec(JObj, AccountMatch) ->
     case kz_json:foldl(fun call_match_builder_fold/3, AccountMatch, JObj) of
         {'error', _Errs}=Errors -> Errors;
@@ -507,8 +506,9 @@ call_match_builder_fold(<<"Status">>, Status, {CallStat, Contstraints}) ->
 call_match_builder_fold(<<"Start-Range">>, Start, {CallStat, Contstraints}) ->
     Now = kz_time:now_s(),
     Past = Now - ?CLEANUP_WINDOW,
+    Start1 = acdc_stats_util:apply_query_window_wiggle_room(Start, Past),
 
-    try kz_term:to_integer(Start) of
+    try kz_term:to_integer(Start1) of
         N when N < Past ->
             {'error', kz_json:from_list([{<<"Start-Range">>, <<"supplied value is too far in the past">>}
                                         ,{<<"Window-Size">>, ?CLEANUP_WINDOW}
@@ -530,8 +530,9 @@ call_match_builder_fold(<<"Start-Range">>, Start, {CallStat, Contstraints}) ->
 call_match_builder_fold(<<"End-Range">>, End, {CallStat, Contstraints}) ->
     Now = kz_time:now_s(),
     Past = Now - ?CLEANUP_WINDOW,
+    End1 = acdc_stats_util:apply_query_window_wiggle_room(End, Past),
 
-    try kz_term:to_integer(End) of
+    try kz_term:to_integer(End1) of
         N when N < Past ->
             {'error', kz_json:from_list([{<<"End-Range">>, <<"supplied value is too far in the past">>}
                                         ,{<<"Window-Size">>, ?CLEANUP_WINDOW}
@@ -576,7 +577,7 @@ average_wait_time_build_match_spec(JObj) ->
     average_wait_time_build_match_spec(Match, Window).
 
 -spec average_wait_time_build_match_spec(ets:match_spec(), kz_term:api_integer()) ->
-                                                ets:match_spec().
+          ets:match_spec().
 average_wait_time_build_match_spec(Match, 'undefined') ->
     Match;
 average_wait_time_build_match_spec([{CallStat, Conditions, Results}], Window) ->
@@ -654,7 +655,7 @@ average_wait_time_fold(Stats) ->
     end.
 
 -spec average_wait_time_fold([non_neg_integer()], {non_neg_integer(), non_neg_integer()}) ->
-                                    {non_neg_integer(), non_neg_integer()}.
+          {non_neg_integer(), non_neg_integer()}.
 average_wait_time_fold([EnteredT, AbandonedT, HandledT], {CallCount, TotalWaitTime}) ->
     WaitTime = wait_time(EnteredT, AbandonedT, HandledT),
     {CallCount + 1, TotalWaitTime + WaitTime}.
@@ -686,7 +687,7 @@ cleanup_data(Srv) ->
                  }],
     gen_listener:cast(Srv, {'remove_call', CallMatch}),
 
-    StatusMatch = [{#status_stat{timestamp='$1', _='_'}
+    StatusMatch = [{#status_stat{key=#status_stat_key{timestamp='$1'}, _='_'}
                    ,[{'=<', '$1', Past}]
                    ,['$_']
                    }],
@@ -1010,7 +1011,7 @@ update_call_stat(Id, Updates, Props) ->
 
 call_state_change(AccountId, Status, Prop) ->
     Body = kz_json:normalize(kz_json:from_list([{<<"Event">>, <<"call_status_change">>}
-                                               ,{<<"Status">>, Status}
+                                               ,{<<"Status">>, kz_term:to_binary(Status)}
                                                 | Prop
                                                ])),
     kz_edr:event(?APP_NAME, ?APP_VERSION, 'ok', 'info', Body, AccountId).

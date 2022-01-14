@@ -27,6 +27,8 @@ SOURCES = $(ITU) $(wildcard src/*.erl) $(wildcard src/*/*.erl)
 
 CLEAN_MOAR = clean-generated
 
+ERLC_OPTS += +'{lager_extra_sinks, [dev]}'
+
 all: compile
 
 compile:
@@ -36,6 +38,7 @@ compile-test: compile-also
 compile-also:
 	$(MAKE) compile-test -C $(ROOT)/core/kazoo_config/
 	$(MAKE) compile-test -C $(ROOT)/core/kazoo_apps/
+	$(MAKE) compile-test -C $(ROOT)/core/kazoo_data/
 
 include $(ROOT)/make/kz.mk
 

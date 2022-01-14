@@ -33,6 +33,8 @@ Key | Description | Type | Default | Required | Support Level
 `do_not_disturb` | DND Parameters | `object()` |   | `false` |  
 `enabled` | Determines if the device is currently enabled | `boolean()` | `true` | `false` | `supported`
 `exclude_from_queues` | Do not ring this device when calling user/agent in queue | `boolean()` | `false` | `false` |  
+`flags.[]` |   | `string()` |   | `false` | `supported`
+`flags` | Flags set by external applications | `array(string())` |   | `false` | `supported`
 `formatters` | Schema for request formatters | [#/definitions/formatters](#formatters) |   | `false` |  
 `hotdesk.users./^[a-zA-Z0-9]{32}$/` | user-specific hotdesk settings | `object()` |   | `false` |  
 `hotdesk.users` | The user(s) currently hotdesked into the device | `object()` |   | `false` |  
@@ -48,6 +50,9 @@ Key | Description | Type | Default | Required | Support Level
 `outbound_flags` | List of flags (features) this device requires when making outbound calls | `array(string()) | object()` |   | `false` |  
 `owner_id` | The ID of the user object that 'owns' the device | `string(32)` |   | `false` |  
 `presence_id` | Static presence ID (used instead of SIP username) | `string()` |   | `false` | `supported`
+`provision.check_sync_event` | Value to use in Event header for device reload/reboot | `string()` |   | `false` |  
+`provision.check_sync_reboot` | Value to append to 'check-sync' event if phone should reboot after reloading settings | `string()` |   | `false` |  
+`provision.check_sync_reload` | Value to append to 'check-sync' event if phone should not reboot after reloading settings | `string()` |   | `false` |  
 `provision.combo_keys./^[0-9]+$/` | Device provisioner Combo/Feature Key | [#/definitions/devices.combo_key](#devicescombo_key) |   | `false` |  
 `provision.combo_keys` |   | `object()` |   | `false` |  
 `provision.endpoint_brand` | Brand of the phone | `string()` |   | `false` |  

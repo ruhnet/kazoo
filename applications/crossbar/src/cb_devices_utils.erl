@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc
 %%% @author Peter Defebvre
 %%% @end
@@ -41,7 +41,8 @@ is_ip_unique(JObj, IP, DeviceId) ->
 is_ip_sip_auth_unique(IP, DeviceId) ->
     case kapps_util:get_ccvs_by_ip(IP) of
         {'ok', CCVs} -> props:get_value(<<"Authorizing-ID">>, CCVs) =:= DeviceId;
-        {'error', 'not_found'} -> 'true'
+        {'error', 'not_found'} -> 'true';
+        {'error', _Reason} -> 'false'
     end.
 
 
@@ -70,7 +71,7 @@ extract_all_ips(JObj) ->
     kz_json:foldl(fun extract_ip/3, [], JObj).
 
 -spec extract_ip(kz_json:path(), kz_json:object(), kz_json:objects()) ->
-                        kz_json:objects().
+          kz_json:objects().
 extract_ip(_Key, Value, Acc) ->
     case kz_json:get_value(<<"cidr">>, Value) of
         'undefined' -> Acc;

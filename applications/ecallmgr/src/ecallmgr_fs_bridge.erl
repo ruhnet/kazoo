@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc Helpers for bridging in FreeSWITCH
 %%% @author James Aimonetti
 %%% @author Karl Anderson
@@ -17,6 +17,35 @@
 
 -define(BYPASS_MEDIA_AFTER_BRIDGE, kapps_config:get_boolean(?APP_NAME, <<"use_bypass_media_after_bridge">>, 'false')).
 -define(CHANNEL_ACTIONS_KEY, [<<"Custom-Channel-Vars">>, <<"Channel-Actions">>]).
+
+%% Keys in the Endpoint JSON that should not be de-duplicated
+-define(UNLIFTABLE_KEYS, [<<"Endpoint-Type">>
+                         ,<<"Failover">>
+                         ,<<"Forward-IP">>
+                         ,<<"Invite-Format">>
+                         ,<<"Proxy-IP">>
+                         ,<<"Proxy-Zone">>
+                         ,<<"Route">>
+                         ,<<"SIP-Interface">>
+                         ,<<"SIP-Transport">>
+                         ,<<"To-DID">>
+                         ,<<"To-IP">>
+                         ,<<"To-Realm">>
+                         ,<<"To-User">>
+                         ,<<"To-Username">>
+
+                              %% Per FS-3792, group confirm must be
+                              %% set per-channel, not globally
+                              %% otherwise double prompting
+                         ,<<"Confirm-Cancel-Timeout">>
+                         ,<<"Confirm-File">>
+                         ,<<"Confirm-Key">>
+                         ,<<"Confirm-Read-Timeout">>
+                         ,[<<"Custom-Channel-Vars">>, <<"Confirm-Cancel-Timeout">>]
+                         ,[<<"Custom-Channel-Vars">>, <<"Confirm-File">>]
+                         ,[<<"Custom-Channel-Vars">>, <<"Confirm-Key">>]
+                         ,[<<"Custom-Channel-Vars">>, <<"Confirm-Read-Timeout">>]
+                         ]).
 
 -spec call_command(atom(), kz_term:ne_binary(), kz_json:object()) -> {'error', binary()} | {binary(), kz_term:proplist()}.
 call_command(Node, UUID, JObj) ->
@@ -60,8 +89,8 @@ call_command(Node, UUID, JObj) ->
     end.
 
 -spec unbridge(kz_term:ne_binary(), kz_json:object()) ->
-                      kz_term:proplist() |
-                      {'error', kz_term:ne_binary()}.
+          kz_term:proplist() |
+          {'error', kz_term:ne_binary()}.
 unbridge(UUID, JObj) ->
     case kapi_dialplan:unbridge_v(JObj) of
         'false' -> {'error', <<"unbridge failed to execute as API did not validate">>};
@@ -248,37 +277,10 @@ create_command(DP, Node, UUID, #channel{profile=ChannelProfile}, JObj) ->
     EPs = kz_json:get_list_value(<<"Endpoints">>, JObj, []),
     Endpoints = maybe_bypass_after_bridge(BypassAfterBridge, BridgeProfile, ChannelProfile, EPs),
 
-    {Common, UniqueEndpoints} = kz_json:lift_common_properties(Endpoints
-                                                              ,[<<"Endpoint-Type">>
-                                                               ,<<"Failover">>
-                                                               ,<<"Forward-IP">>
-                                                               ,<<"Invite-Format">>
-                                                               ,<<"Proxy-IP">>
-                                                               ,<<"Proxy-Zone">>
-                                                               ,<<"Route">>
-                                                               ,<<"SIP-Interface">>
-                                                               ,<<"SIP-Transport">>
-                                                               ,<<"To-DID">>
-                                                               ,<<"To-IP">>
-                                                               ,<<"To-Realm">>
-                                                               ,<<"To-User">>
-                                                               ,<<"To-Username">>
+    {CommonProperties, UniqueEndpoints} = kz_json:lift_common_properties(Endpoints, ?UNLIFTABLE_KEYS),
 
-                                                                    %% Per FS-3792, group confirm must be
-                                                                    %% set per-channel, not globally
-                                                                    %% otherwise double prompting
-                                                               ,<<"Confirm-Cancel-Timeout">>
-                                                               ,<<"Confirm-File">>
-                                                               ,<<"Confirm-Key">>
-                                                               ,<<"Confirm-Read-Timeout">>
-                                                               ,[<<"Custom-Channel-Vars">>, <<"Confirm-Cancel-Timeout">>]
-                                                               ,[<<"Custom-Channel-Vars">>, <<"Confirm-File">>]
-                                                               ,[<<"Custom-Channel-Vars">>, <<"Confirm-Key">>]
-                                                               ,[<<"Custom-Channel-Vars">>, <<"Confirm-Read-Timeout">>]
-                                                               ]),
-
-    lager:debug("lifting from leg to channel: ~s", [kz_json:encode(Common)]),
-    UpdatedJObj = kz_json:set_value(<<"Endpoints">>, UniqueEndpoints, kz_json:merge(JObj, Common)),
+    lager:debug("lifting from leg to channel: ~s", [kz_json:encode(CommonProperties)]),
+    UpdatedJObj = kz_json:set_value(<<"Endpoints">>, UniqueEndpoints, kz_json:merge(JObj, CommonProperties)),
 
     LiftedCmd = list_to_binary(["bridge "
                                ,build_channels_vars(Node, UUID, UniqueEndpoints, UpdatedJObj)
@@ -320,7 +322,7 @@ build_channels_vars(Node, UUID, Endpoints, JObj) ->
     Props = lists:foldl(fun(F, Acc) -> Acc ++ F(Node, UUID, Endpoints, JObj) end, [], Routines),
     ecallmgr_fs_xml:get_channel_vars(kz_json:set_values(Props, JObj)).
 
--spec maybe_force_fax(atom(), kz_term:ne_binary(), kz_json:objects(), kz_json:object()) -> kz_term:ne_binaries().
+-spec maybe_force_fax(atom(), kz_term:ne_binary(), kz_json:objects(), kz_json:object()) -> kz_term:proplist().
 maybe_force_fax(_Node, _UUID, Endpoints, JObj) ->
     case kz_json:find(<<"Force-Fax">>, Endpoints, kz_json:get_value(<<"Force-Fax">>, JObj)) of
         'undefined' -> [];
@@ -364,14 +366,14 @@ build_endpoint_actions(Node, UUID, Endpoint) ->
 -type ep_actions() :: kz_term:ne_binaries().
 
 -spec build_endpoint_actions(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object(), ep_actions()) ->
-                                    ep_actions().
+          ep_actions().
 build_endpoint_actions(Node, UUID, K, V, Acc) ->
     Fun = fun(K1, V1, Acc1)-> build_endpoint_action(Node, UUID, K1, V1, Acc1) end,
     DP = kz_json:foldr(Fun, [], V),
     Acc ++ build_endpoint_action_dp(K, DP).
 
 -spec build_endpoint_action(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object(), fs_apps()) ->
-                                   fs_apps().
+          fs_apps().
 build_endpoint_action(Node, UUID, _K, V, Acc) ->
     lager:debug("building dialplan action for ~s", [_K]),
     DP = ecallmgr_call_command:fetch_dialplan(Node, UUID, V, self()),
@@ -398,7 +400,7 @@ endpoint_action_cmd(Event) ->
         {_, Prefix} -> Prefix
     end.
 
--spec add_bridge_actions(atom(), kz_term:ne_binary(), kz_json:objects(), kz_json:object()) -> kz_term:ne_binaries().
+-spec add_bridge_actions(atom(), kz_term:ne_binary(), kz_json:objects(), kz_json:object()) -> kz_term:proplist().
 add_bridge_actions(Node, UUID, _Endpoints, JObj) ->
     BridgeActions = kz_json:get_json_value(<<"Bridge-Actions">>, JObj, kz_json:new()),
     Fun = fun(K, V, Acc)-> build_bridge_actions(Node, UUID, K, V, Acc) end,
@@ -408,14 +410,14 @@ add_bridge_actions(Node, UUID, _Endpoints, JObj) ->
     end.
 
 -spec build_bridge_actions(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object(), ep_actions()) ->
-                                  ep_actions().
+          ep_actions().
 build_bridge_actions(Node, UUID, K, V, Acc) ->
     Fun = fun(K1, V1, Acc1)-> build_bridge_action(Node, UUID, K1, V1, Acc1) end,
     DP = kz_json:foldr(Fun, [], V),
     Acc ++ build_bridge_action_dp(K, DP).
 
 -spec build_bridge_action(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object(), fs_apps()) ->
-                                 fs_apps().
+          fs_apps().
 build_bridge_action(Node, UUID, _K, V, Acc) ->
     lager:debug("building dialplan action for ~s", [_K]),
     DP = ecallmgr_call_command:fetch_dialplan(Node, UUID, V, self()),

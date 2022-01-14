@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -66,6 +66,22 @@ resource_consumption_at_limit(Limits, Request) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec inbound_channels_per_did_at_limit(kz_term:ne_binary(), j5_limits:limits()) -> boolean().
+inbound_channels_per_did_at_limit(Request, Limits) ->
+    AccountId = j5_limits:account_id(Limits),
+    ToDID = j5_request:number(Request),
+    PerDIDJObj = j5_limits:inbound_channels_per_did_rules(Limits),
+    Limit = match_did_limits(ToDID, PerDIDJObj, kz_json:get_keys(PerDIDJObj)),
+    Used  = j5_channels:total_inbound_channels_per_did_rules(ToDID, AccountId),
+    lager:debug("inbound_channels_per_did_limit AccountId: ~p ToDid: ~p Used: ~p Limit: ~p"
+               ,[AccountId ,ToDID ,Used ,Limit]
+               ),
+    should_deny(Limit, Used).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
+-spec inbound_channels_per_did_at_limit(j5_request:request(), j5_limits:limits()) -> boolean().
 inbound_channels_per_did_at_limit(Request, Limits) ->
     AccountId = j5_limits:account_id(Limits),
     ToDID = j5_request:number(Request),

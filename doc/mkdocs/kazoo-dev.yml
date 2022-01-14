@@ -112,8 +112,6 @@ pages:
   - 'Doodle':
     - 'applications/doodle/doc/README.md'
     - 'applications/doodle/doc/configuration.md'
-  - 'DTH':
-    - 'applications/dth/doc/README.md'
   - 'Ecallmgr':
     - 'applications/ecallmgr/doc/README.md'
     - 'applications/ecallmgr/doc/maintenance.md'
@@ -188,8 +186,6 @@ pages:
     - 'core/kazoo_media/doc/README.md'
   - 'Kazoo Apps':
     - 'core/kazoo_apps/doc/README.md'
-  - 'GCM':
-    - 'core/gcm/README.md'
   - 'Kazoo Translator':
     - 'core/kazoo_translator/doc/README.md'
   - 'Kazoo Number Manager':

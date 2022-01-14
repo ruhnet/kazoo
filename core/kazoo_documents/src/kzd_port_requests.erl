@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -35,13 +35,14 @@
 
 %% Private fields
 -export([pvt_account_name/1, pvt_account_name/2, set_pvt_account_name/2]).
+-export([pvt_last_phonebook_error/1, pvt_last_phonebook_error/2, set_pvt_last_phonebook_error/2]).
 -export([pvt_port_authority/1, pvt_port_authority/2, set_pvt_port_authority/2]).
 -export([pvt_port_authority_name/1, pvt_port_authority_name/2, set_pvt_port_authority_name/2]).
 -export([pvt_port_state/1, pvt_port_state/2, set_pvt_port_state/2]).
 -export([pvt_ported_numbers/1, pvt_ported_numbers/2, set_pvt_ported_numbers/2]).
 -export([pvt_sent/1, pvt_sent/2, set_pvt_sent/2]).
--export([pvt_tree/1, pvt_tree/2, set_pvt_tree/2]).
 -export([pvt_transitions/1, pvt_transitions/2, set_pvt_tranisitions/2]).
+-export([pvt_tree/1, pvt_tree/2, set_pvt_tree/2]).
 
 %% Utilities
 -export([get_transition/2]).
@@ -391,6 +392,22 @@ set_pvt_account_name(Doc, Name) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
+-spec pvt_last_phonebook_error(doc()) -> kz_term:api_ne_binary().
+pvt_last_phonebook_error(Doc) ->
+    pvt_last_phonebook_error(Doc, 'undefined').
+
+-spec pvt_last_phonebook_error(doc(), Default) -> kz_term:ne_binary() | Default.
+pvt_last_phonebook_error(Doc, Default) ->
+    kz_json:get_ne_binary_value([<<"pvt_last_phonebook_error">>], Doc, Default).
+
+-spec set_pvt_last_phonebook_error(doc(), kz_term:ne_binary()) -> doc().
+set_pvt_last_phonebook_error(Doc, Name) ->
+    kz_json:set_value([<<"pvt_last_phonebook_error">>], Name, Doc).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
 -spec pvt_port_authority(doc()) -> kz_term:api_ne_binary().
 pvt_port_authority(Doc) ->
     pvt_port_authority(Doc, 'undefined').
@@ -554,7 +571,7 @@ find_port_authority(Doc) ->
     end.
 
 -spec find_port_authority(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:api_ne_binary()) ->
-                                 kz_term:api_binary().
+          kz_term:api_binary().
 find_port_authority(MasterAccountId, SubmittedAccountId, 'undefined') ->
     lager:debug("account id is undefined, checking master"),
     find_port_authority(MasterAccountId, SubmittedAccountId, MasterAccountId);
@@ -566,7 +583,7 @@ find_port_authority(MasterAccountId, SubmittedAccountId, AccountId) ->
     find_port_authority(MasterAccountId, SubmittedAccountId, AccountId, WhiteAuthority).
 
 -spec find_port_authority(kz_term:api_ne_binary(), kz_term:ne_binary(), kz_term:api_ne_binary(), kz_term:api_ne_binary()) ->
-                                 kz_term:api_binary().
+          kz_term:api_binary().
 find_port_authority(MasterAccountId, SubmittedAccountId, AccountId, 'undefined') ->
     ParentId = kzd_accounts:get_authoritative_parent_id(AccountId, MasterAccountId),
     lager:debug("no port authority key found for ~s, checking parent ~s", [AccountId, ParentId]),

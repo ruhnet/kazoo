@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc Data: {
 %%%   "id":"queue id"
 %%% }
@@ -141,7 +141,6 @@ process_message(#member_call{call=Call
             lager:info("call failed to be processed: ~s (took ~b s)"
                       ,[Failure, kz_time:elapsed_s(Start)]
                       ),
-            cancel_member_call(Call, Failure),
             stop_hold_music(Call),
             cf_exe:continue(Call);
         'false' ->

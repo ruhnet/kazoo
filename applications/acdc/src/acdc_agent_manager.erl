@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc Manages agent processes:
 %%%   starting when an agent logs in
 %%%   stopping when an agent logs out
@@ -7,6 +7,7 @@
 %%%   and more!!!
 %%%
 %%% @author James Aimonetti
+%%% @author Daniel Finke
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(acdc_agent_manager).
@@ -50,6 +51,7 @@
                       ,{<<"agent">>, <<"end_wrapup">>}
                       ,{<<"agent">>, <<"login_queue">>}
                       ,{<<"agent">>, <<"logout_queue">>}
+                      ,{<<"agent">>, <<"restart">>}
                       ]
                      }
                     ,{{'acdc_agent_handler', 'handle_stats_req'}
@@ -123,6 +125,9 @@ handle_cast(_Msg, State) ->
 handle_info(?HOOK_EVT(AccountId, <<"CHANNEL_CREATE">>, JObj), State) ->
     lager:debug("channel_create event"),
     _ = kz_util:spawn(fun acdc_agent_handler:handle_new_channel/2, [JObj, AccountId]),
+    {'noreply', State};
+handle_info(?HOOK_EVT(AccountId, <<"CHANNEL_DESTROY">>, JObj), State) ->
+    _ = kz_util:spawn(fun acdc_agent_handler:handle_destroyed_channel/2, [JObj, AccountId]),
     {'noreply', State};
 handle_info(?HOOK_EVT(_AccountId, _EventName, _JObj), State) ->
     lager:debug("ignoring ~s for account ~s on call ~s", [_EventName, _AccountId, kz_json:get_value(<<"Call-ID">>, _JObj)]),

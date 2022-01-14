@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2015-2019, 2600Hz
+%%% @copyright (C) 2015-2021, 2600Hz
 %%% @doc
 %%% @author Peter Defebvre
 %%% @author James Aimonetti
@@ -31,6 +31,7 @@
         ,ensure_can_create/1
         ,ensure_can_load_to_create/1
         ,state_for_create/1, allowed_creation_states/1, allowed_creation_states/2
+        ,validate_ownership/2
         ]).
 
 -ifdef(TEST).
@@ -93,7 +94,7 @@
 new() -> #knm_number{}.
 
 -spec new(knm_phone_number:knm_phone_number() | knm_numbers:collection()) ->
-                 knm_numbers:collection() | knm_number().
+          knm_numbers:collection() | knm_number().
 new(T=#{todo := PNs}) ->
     Numbers = [new(PN) || PN <- PNs],
     knm_numbers:ok(Numbers, T);
@@ -110,7 +111,7 @@ is_number(_) -> 'false'.
 %% <div class="notice">Number parameter has to be normalized.</div>
 %%
 %% <div class="notice">{@link get/1}, {@link get/2} should not throw,
-%% instead they should return: `{ok,_} | {error,_} | ...'.</div>
+%% instead they should return: `{'ok',_} | {error,_} | ...'.</div>
 %% @end
 %%------------------------------------------------------------------------------
 
@@ -179,8 +180,8 @@ allowed_creation_states(Options, AuthBy) ->
     end.
 
 -spec ensure_can_load_to_create(knm_numbers:collection() | knm_phone_number:knm_phone_number()) ->
-                                       'true' |
-                                       knm_numbers:collection().
+          'true' |
+          knm_numbers:collection().
 ensure_can_load_to_create(T0=#{todo := PNs}) ->
     F = fun (PN, T) ->
                 case attempt(fun ensure_can_load_to_create/1, [PN]) of
@@ -232,6 +233,35 @@ ensure_can_create(T0=#{'todo' := Nums, 'options' := Options}) ->
 ensure_can_create(Num, Options) ->
     ensure_account_can_create(Options, knm_number_options:auth_by(Options))
         andalso ensure_number_is_not_porting(Num, Options).
+
+%%------------------------------------------------------------------------------
+%% @doc Return true if the numbers are all owned by the account, else return the
+%% tuple where the first element is `false' and the second is a list of all the
+%% numbers that are not owned by the account.
+%% @end
+%%------------------------------------------------------------------------------
+-spec validate_ownership(kz_term:ne_binary(), knm_numbers:num() | knm_numbers:nums()) -> 'true' | {'false', knm_numbers:nums()}.
+validate_ownership(AccountId, Number=?NE_BINARY) ->
+    validate_ownership(AccountId, [Number]);
+validate_ownership(_AccountId, []) -> 'true';
+validate_ownership(AccountId, Numbers) ->
+    Options = [{'auth_by', AccountId}],
+    #{'ko' := KOs} = knm_numbers:get(Numbers, Options),
+    case maps:fold(fun validate_ownership_fold/3, [], KOs) of
+        [] -> 'true';
+        Unauthorized -> {'false', Unauthorized}
+    end.
+
+-spec validate_ownership_fold(knm_numbers:num(), knm_numbers:ko(), kz_term:ne_binaries()) ->
+          kz_term:ne_binaries().
+validate_ownership_fold(_, Reason, UnauthorizedAcc) when is_atom(Reason) ->
+    %% Ignoring atom reasons, i.e. 'not_found' or 'not_reconcilable'
+    UnauthorizedAcc;
+validate_ownership_fold(Number, ReasonJObj, UnauthorizedAcc) ->
+    case knm_errors:error(ReasonJObj) of
+        <<"forbidden">> -> [Number|UnauthorizedAcc];
+        _ -> UnauthorizedAcc
+    end.
 
 -ifdef(TEST).
 -define(LOAD_ACCOUNT(Options, _AccountId)
@@ -306,7 +336,7 @@ update(Num, Routines) ->
     update(Num, Routines, knm_number_options:default()).
 
 -spec update(kz_term:ne_binary(), knm_phone_number:set_functions(), knm_number_options:options()) ->
-                    knm_number_return().
+          knm_number_return().
 update(Num, Routines, Options) ->
     ?RUN_KNM_NUMBERS_FUN_ARGS('update', Num, Routines, Options).
 
@@ -385,8 +415,10 @@ lookup_account(Num) ->
 
 fetch_account_from_number(Num) ->
     case knm_phone_number:fetch(Num) of
-        {'ok', PN} -> check_number(PN);
-        {'error', _}=Error -> maybe_fetch_account_from_ports(Num, Error)
+        {'ok', PN} ->
+            check_number(PN);
+        {'error', _}=Error ->
+            maybe_fetch_account_from_ports(Num, Error)
     end.
 
 check_number(PN) ->
@@ -549,7 +581,7 @@ force_local_outbound() ->
 phone_number(#knm_number{knm_phone_number=PhoneNumber}) -> PhoneNumber.
 
 -spec set_phone_number(knm_number(), knm_phone_number:knm_phone_number()) ->
-                              knm_number().
+          knm_number().
 set_phone_number(Number, PhoneNumber) ->
     Number#knm_number{knm_phone_number=PhoneNumber}.
 
@@ -558,8 +590,8 @@ to_public_json(#knm_number{}=Number) ->
     knm_phone_number:to_public_json(phone_number(Number)).
 
 -spec attempt(fun(), list()) -> knm_number_return() |
-                                knm_phone_number_return() |
-                                'true'.
+          knm_phone_number_return() |
+          'true'.
 attempt(Fun, Args) ->
     try apply(Fun, Args) of
         #knm_number{}=N -> {'ok', N};

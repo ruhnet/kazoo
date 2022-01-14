@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc
 %%% @author James Aimonetti
 %%% @author Sponsored by GTNetwork LLC, Implemented by SIPLABS LLC
@@ -15,14 +15,12 @@
         ,member_call_cancel/1, member_call_cancel_v/1
         ,member_connect_req/1, member_connect_req_v/1
         ,member_connect_resp/1, member_connect_resp_v/1
-        ,member_connect_win/1, member_connect_win_v/1
         ,agent_timeout/1, agent_timeout_v/1
         ,member_connect_retry/1, member_connect_retry_v/1
         ,member_connect_accepted/1, member_connect_accepted_v/1
         ,member_hungup/1, member_hungup_v/1
-        ,sync_req/1, sync_req_v/1
-        ,sync_resp/1, sync_resp_v/1
         ,agent_change/1, agent_change_v/1
+        ,started_notif/1, started_notif_v/1
         ,queue_member_add/1, queue_member_add_v/1
         ,queue_member_remove/1, queue_member_remove_v/1
         ]).
@@ -45,14 +43,12 @@
         ,publish_member_call_cancel/1, publish_member_call_cancel/2
         ,publish_member_connect_req/1, publish_member_connect_req/2
         ,publish_member_connect_resp/2, publish_member_connect_resp/3
-        ,publish_member_connect_win/2, publish_member_connect_win/3
         ,publish_agent_timeout/2, publish_agent_timeout/3
         ,publish_member_connect_retry/2, publish_member_connect_retry/3
         ,publish_member_connect_accepted/2, publish_member_connect_accepted/3
         ,publish_member_hungup/2, publish_member_hungup/3
-        ,publish_sync_req/1, publish_sync_req/2
-        ,publish_sync_resp/2, publish_sync_resp/3
         ,publish_agent_change/1, publish_agent_change/2
+        ,publish_started_notif/1, publish_started_notif/2
         ,publish_queue_member_add/1, publish_queue_member_add/2
         ,publish_queue_member_remove/1, publish_queue_member_remove/2
         ]).
@@ -74,8 +70,8 @@
                            ]).
 
 -spec member_call(kz_term:api_terms()) ->
-                         {'ok', iolist()} |
-                         {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_call(Props) when is_list(Props) ->
     case member_call_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CALL_HEADERS, ?OPTIONAL_MEMBER_CALL_HEADERS);
@@ -116,8 +112,8 @@ member_call_routing_key(AcctId, QueueId) ->
 -define(MEMBER_CALL_FAIL_TYPES, []).
 
 -spec member_call_failure(kz_term:api_terms()) ->
-                                 {'ok', iolist()} |
-                                 {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_call_failure(Props) when is_list(Props) ->
     case member_call_failure_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CALL_FAIL_HEADERS, ?OPTIONAL_MEMBER_CALL_FAIL_HEADERS);
@@ -143,8 +139,8 @@ member_call_failure_v(JObj) ->
 -define(MEMBER_CALL_SUCCESS_TYPES, []).
 
 -spec member_call_success(kz_term:api_terms()) ->
-                                 {'ok', iolist()} |
-                                 {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_call_success(Props) when is_list(Props) ->
     case member_call_success_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CALL_SUCCESS_HEADERS, ?OPTIONAL_MEMBER_CALL_SUCCESS_HEADERS);
@@ -171,8 +167,8 @@ member_call_success_v(JObj) ->
 -define(MEMBER_CALL_CANCEL_TYPES, []).
 
 -spec member_call_cancel(kz_term:api_terms()) ->
-                                {'ok', iolist()} |
-                                {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_call_cancel(Props) when is_list(Props) ->
     case member_call_cancel_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CALL_CANCEL_HEADERS, ?OPTIONAL_MEMBER_CALL_CANCEL_HEADERS);
@@ -214,8 +210,8 @@ member_call_result_routing_key(AcctId, QueueId, CallId) ->
 -define(MEMBER_CONNECT_REQ_TYPES, []).
 
 -spec member_connect_req(kz_term:api_terms()) ->
-                                {'ok', iolist()} |
-                                {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_connect_req(Props) when is_list(Props) ->
     case member_connect_req_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CONNECT_REQ_HEADERS, ?OPTIONAL_MEMBER_CONNECT_REQ_HEADERS);
@@ -255,8 +251,8 @@ member_connect_req_routing_key(AcctId, QID) ->
 -define(MEMBER_CONNECT_RESP_TYPES, []).
 
 -spec member_connect_resp(kz_term:api_terms()) ->
-                                 {'ok', iolist()} |
-                                 {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_connect_resp(Props) when is_list(Props) ->
     case member_connect_resp_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CONNECT_RESP_HEADERS, ?OPTIONAL_MEMBER_CONNECT_RESP_HEADERS);
@@ -272,38 +268,6 @@ member_connect_resp_v(JObj) ->
     member_connect_resp_v(kz_json:to_proplist(JObj)).
 
 %%------------------------------------------------------------------------------
-%% Member Connect Win
-%%------------------------------------------------------------------------------
--define(MEMBER_CONNECT_WIN_HEADERS, [<<"Queue-ID">>, <<"Call">>]).
--define(OPTIONAL_MEMBER_CONNECT_WIN_HEADERS, [<<"Ring-Timeout">>, <<"Caller-Exit-Key">>
-                                             ,<<"Wrapup-Timeout">>, <<"CDR-Url">>
-                                             ,<<"Process-ID">>, <<"Agent-Process-ID">>
-                                             ,<<"Record-Caller">>, <<"Recording-URL">>
-                                             ,<<"Notifications">>
-                                             ]).
--define(MEMBER_CONNECT_WIN_VALUES, [{<<"Event-Category">>, <<"member">>}
-                                   ,{<<"Event-Name">>, <<"connect_win">>}
-                                   ]).
--define(MEMBER_CONNECT_WIN_TYPES, [{<<"Record-Caller">>, fun kz_term:is_boolean/1}]).
-
--spec member_connect_win(kz_term:api_terms()) ->
-                                {'ok', iolist()} |
-                                {'error', string()}.
-member_connect_win(Props) when is_list(Props) ->
-    case member_connect_win_v(Props) of
-        'true' -> kz_api:build_message(Props, ?MEMBER_CONNECT_WIN_HEADERS, ?OPTIONAL_MEMBER_CONNECT_WIN_HEADERS);
-        'false' -> {'error', "Proplist failed validation for member_connect_win"}
-    end;
-member_connect_win(JObj) ->
-    member_connect_win(kz_json:to_proplist(JObj)).
-
--spec member_connect_win_v(kz_term:api_terms()) -> boolean().
-member_connect_win_v(Prop) when is_list(Prop) ->
-    kz_api:validate(Prop, ?MEMBER_CONNECT_WIN_HEADERS, ?MEMBER_CONNECT_WIN_VALUES, ?MEMBER_CONNECT_WIN_TYPES);
-member_connect_win_v(JObj) ->
-    member_connect_win_v(kz_json:to_proplist(JObj)).
-
-%%------------------------------------------------------------------------------
 %% Agent Timeout
 %%------------------------------------------------------------------------------
 -define(AGENT_TIMEOUT_HEADERS, [<<"Queue-ID">>, <<"Call-ID">>]).
@@ -314,8 +278,8 @@ member_connect_win_v(JObj) ->
 -define(AGENT_TIMEOUT_TYPES, []).
 
 -spec agent_timeout(kz_term:api_terms()) ->
-                           {'ok', iolist()} |
-                           {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 agent_timeout(Props) when is_list(Props) ->
     case agent_timeout_v(Props) of
         'true' -> kz_api:build_message(Props, ?AGENT_TIMEOUT_HEADERS, ?OPTIONAL_AGENT_TIMEOUT_HEADERS);
@@ -340,8 +304,8 @@ agent_timeout_v(JObj) ->
 -define(MEMBER_CONNECT_ACCEPTED_TYPES, []).
 
 -spec member_connect_accepted(kz_term:api_terms()) ->
-                                     {'ok', iolist()} |
-                                     {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_connect_accepted(Props) when is_list(Props) ->
     case member_connect_accepted_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CONNECT_ACCEPTED_HEADERS, ?OPTIONAL_MEMBER_CONNECT_ACCEPTED_HEADERS);
@@ -369,8 +333,8 @@ member_connect_accepted_v(JObj) ->
 -define(MEMBER_CONNECT_RETRY_TYPES, []).
 
 -spec member_connect_retry(kz_term:api_terms()) ->
-                                  {'ok', iolist()} |
-                                  {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_connect_retry(Props) when is_list(Props) ->
     case member_connect_retry_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_CONNECT_RETRY_HEADERS, ?OPTIONAL_MEMBER_CONNECT_RETRY_HEADERS);
@@ -399,8 +363,8 @@ member_connect_retry_v(JObj) ->
 -define(MEMBER_HUNGUP_TYPES, []).
 
 -spec member_hungup(kz_term:api_terms()) ->
-                           {'ok', iolist()} |
-                           {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 member_hungup(Props) when is_list(Props) ->
     case member_hungup_v(Props) of
         'true' -> kz_api:build_message(Props, ?MEMBER_HUNGUP_HEADERS, ?OPTIONAL_MEMBER_HUNGUP_HEADERS);
@@ -414,75 +378,6 @@ member_hungup_v(Prop) when is_list(Prop) ->
     kz_api:validate(Prop, ?MEMBER_HUNGUP_HEADERS, ?MEMBER_HUNGUP_VALUES, ?MEMBER_HUNGUP_TYPES);
 member_hungup_v(JObj) ->
     member_hungup_v(kz_json:to_proplist(JObj)).
-
-%%------------------------------------------------------------------------------
-%% Sync Req/Resp
-%%   Depending on the queue strategy, get the other queue's strategy state
-%%------------------------------------------------------------------------------
-
--spec sync_req_routing_key(kz_term:api_terms()) -> kz_term:ne_binary().
-sync_req_routing_key(Props) when is_list(Props) ->
-    Id = props:get_value(<<"Queue-ID">>, Props, <<"*">>),
-    AcctId = props:get_value(<<"Account-ID">>, Props),
-    sync_req_routing_key(AcctId, Id);
-sync_req_routing_key(JObj) ->
-    Id = kz_json:get_value(<<"Queue-ID">>, JObj, <<"*">>),
-    AcctId = kz_json:get_value(<<"Account-ID">>, JObj),
-    sync_req_routing_key(AcctId, Id).
-
--spec sync_req_routing_key(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_term:ne_binary().
-sync_req_routing_key(AcctId, QID) ->
-    <<"acdc.queue.sync_req.", AcctId/binary, ".", QID/binary>>.
-
--define(SYNC_REQ_HEADERS, [<<"Account-ID">>, <<"Queue-ID">>]).
--define(OPTIONAL_SYNC_REQ_HEADERS, [<<"Process-ID">>]).
--define(SYNC_REQ_VALUES, [{<<"Event-Category">>, <<"queue">>}
-                         ,{<<"Event-Name">>, <<"sync_req">>}
-                         ]).
--define(SYNC_REQ_TYPES, []).
-
--spec sync_req(kz_term:api_terms()) ->
-                      {'ok', iolist()} |
-                      {'error', string()}.
-sync_req(Props) when is_list(Props) ->
-    case sync_req_v(Props) of
-        'true' -> kz_api:build_message(Props, ?SYNC_REQ_HEADERS, ?OPTIONAL_SYNC_REQ_HEADERS);
-        'false' -> {'error', "Proplist failed validation for sync_req"}
-    end;
-sync_req(JObj) ->
-    sync_req(kz_json:to_proplist(JObj)).
-
--spec sync_req_v(kz_term:api_terms()) -> boolean().
-sync_req_v(Prop) when is_list(Prop) ->
-    kz_api:validate(Prop, ?SYNC_REQ_HEADERS, ?SYNC_REQ_VALUES, ?SYNC_REQ_TYPES);
-sync_req_v(JObj) ->
-    sync_req_v(kz_json:to_proplist(JObj)).
-
--define(SYNC_RESP_HEADERS, [<<"Account-ID">>, <<"Queue-ID">>
-                           ,<<"Current-Strategy">>
-                           ]).
--define(OPTIONAL_SYNC_RESP_HEADERS, [<<"Process-ID">>, <<"Strategy-State">>]).
--define(SYNC_RESP_VALUES, [{<<"Event-Category">>, <<"queue">>}
-                          ,{<<"Event-Name">>, <<"sync_resp">>}
-                          ]).
--define(SYNC_RESP_TYPES, []).
-
--spec sync_resp(kz_term:api_terms()) ->
-                       {'ok', iolist()} |
-                       {'error', string()}.
-sync_resp(Props) when is_list(Props) ->
-    case sync_resp_v(Props) of
-        'true' -> kz_api:build_message(Props, ?SYNC_RESP_HEADERS, ?OPTIONAL_SYNC_RESP_HEADERS);
-        'false' -> {'error', "Proplist failed validation for sync_resp"}
-    end;
-sync_resp(JObj) ->
-    sync_resp(kz_json:to_proplist(JObj)).
-
--spec sync_resp_v(kz_term:api_terms()) -> boolean().
-sync_resp_v(Prop) when is_list(Prop) ->
-    kz_api:validate(Prop, ?SYNC_RESP_HEADERS, ?SYNC_RESP_VALUES, ?SYNC_RESP_TYPES);
-sync_resp_v(JObj) ->
-    sync_resp_v(kz_json:to_proplist(JObj)).
 
 %%------------------------------------------------------------------------------
 %% Agent Change
@@ -532,8 +427,8 @@ agent_change_unavailable() -> ?AGENT_CHANGE_UNAVAILABLE.
 -define(AGENT_CHANGE_TYPES, []).
 
 -spec agent_change(kz_term:api_terms()) ->
-                          {'ok', iolist()} |
-                          {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 agent_change(Prop) when is_list(Prop) ->
     case agent_change_v(Prop) of
         'true' -> kz_api:build_message(Prop, ?AGENT_CHANGE_HEADERS, ?OPTIONAL_AGENT_CHANGE_HEADERS);
@@ -547,6 +442,46 @@ agent_change_v(Prop) when is_list(Prop) ->
 agent_change_v(JObj) -> agent_change_v(kz_json:to_proplist(JObj)).
 
 %%------------------------------------------------------------------------------
+%% Event for announcing that a queue has been started so that agents that are
+%% members of the queue can inform the queue of their availability
+%%------------------------------------------------------------------------------
+-spec started_notif_routing_key(kz_term:api_terms()) -> kz_term:ne_binary().
+started_notif_routing_key(Prop) when is_list(Prop) ->
+    started_notif_routing_key(props:get_value(<<"Account-ID">>, Prop)
+                             ,props:get_value(<<"Queue-ID">>, Prop)
+                             );
+started_notif_routing_key(JObj) ->
+    started_notif_routing_key(kz_json:get_value(<<"Account-ID">>, JObj)
+                             ,kz_json:get_value(<<"Queue-ID">>, JObj)
+                             ).
+
+-spec started_notif_routing_key(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_term:ne_binary().
+started_notif_routing_key(AccountId, QueueId) ->
+    <<"acdc.queue.started_notif.", AccountId/binary, ".", QueueId/binary>>.
+
+-define(STARTED_NOTIF_HEADERS, [<<"Account-ID">>, <<"Queue-ID">>]).
+-define(OPTIONAL_STARTED_NOTIF_HEADERS, []).
+-define(STARTED_NOTIF_VALUES, [{<<"Event-Category">>, <<"queue">>}
+                              ,{<<"Event-Name">>, <<"started_notif">>}
+                              ]).
+-define(STARTED_NOTIF_TYPES, [{<<"Account-ID">>, fun kz_term:is_ne_binary/1}
+                             ,{<<"Queue-ID">>, fun kz_term:is_ne_binary/1}
+                             ]).
+
+-spec started_notif(kz_term:api_terms()) ->
+          {'ok', iolist()} |
+          {'error', string()}.
+started_notif(Prop) when is_list(Prop) ->
+    case started_notif_v(Prop) of
+        'true' -> kz_api:build_message(Prop, ?STARTED_NOTIF_HEADERS, ?OPTIONAL_STARTED_NOTIF_HEADERS);
+        'false' -> {'error', "proplist failed validation for started_notif"}
+    end;
+started_notif(JObj) -> started_notif(kz_json:to_proplist(JObj)).
+
+-spec started_notif_v(kz_term:api_terms()) -> boolean().
+started_notif_v(Prop) when is_list(Prop) ->
+    kz_api:validate(Prop, ?STARTED_NOTIF_HEADERS, ?STARTED_NOTIF_VALUES, ?STARTED_NOTIF_TYPES);
+started_notif_v(JObj) -> started_notif_v(kz_json:to_proplist(JObj)).
 
 %%------------------------------------------------------------------------------
 %% Queue Position tracking
@@ -574,8 +509,8 @@ queue_member_routing_key(AcctId, QID) ->
 -define(QUEUE_MEMBER_ADD_TYPES, []).
 
 -spec queue_member_add(kz_term:api_terms()) ->
-                              {'ok', iolist()} |
-                              {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 queue_member_add(Prop) when is_list(Prop) ->
     case queue_member_add_v(Prop) of
         'true' -> kz_api:build_message(Prop, ?QUEUE_MEMBER_ADD_HEADERS, ?OPTIONAL_QUEUE_MEMBER_ADD_HEADERS);
@@ -596,8 +531,8 @@ queue_member_add_v(JObj) -> queue_member_add_v(kz_json:to_proplist(JObj)).
 -define(QUEUE_MEMBER_REMOVE_TYPES, []).
 
 -spec queue_member_remove(kz_term:api_terms()) ->
-                                 {'ok', iolist()} |
-                                 {'error', string()}.
+          {'ok', iolist()} |
+          {'error', string()}.
 queue_member_remove(Prop) when is_list(Prop) ->
     case queue_member_remove_v(Prop) of
         'true' -> kz_api:build_message(Prop, ?QUEUE_MEMBER_REMOVE_HEADERS, ?OPTIONAL_QUEUE_MEMBER_REMOVE_HEADERS);
@@ -648,12 +583,12 @@ bind_q(Q, Props) ->
     bind_q(Q, AcctId, QID, CallId, props:get_value('restrict_to', Props)).
 
 bind_q(Q, AcctId, QID, CallId, 'undefined') ->
-    kz_amqp_util:bind_q_to_kapps(Q, sync_req_routing_key(AcctId, QID)),
     kz_amqp_util:bind_q_to_kapps(Q, agent_change_routing_key(AcctId, QID)),
     kz_amqp_util:bind_q_to_callmgr(Q, member_call_routing_key(AcctId, QID)),
     kz_amqp_util:bind_q_to_callmgr(Q, member_call_result_routing_key(AcctId, QID, CallId)),
     kz_amqp_util:bind_q_to_callmgr(Q, member_connect_req_routing_key(AcctId, QID)),
-    kz_amqp_util:bind_q_to_kapps(Q, queue_member_routing_key(AcctId, QID));
+    kz_amqp_util:bind_q_to_kapps(Q, queue_member_routing_key(AcctId, QID)),
+    kz_amqp_util:bind_q_to_kapps(Q, started_notif_routing_key(AcctId, QID));
 bind_q(Q, AcctId, QID, CallId, ['member_call'|T]) ->
     kz_amqp_util:bind_q_to_callmgr(Q, member_call_routing_key(AcctId, QID)),
     bind_q(Q, AcctId, QID, CallId, T);
@@ -663,14 +598,14 @@ bind_q(Q, AcctId, QID, CallId, ['member_call_result'|T]) ->
 bind_q(Q, AcctId, QID, CallId, ['member_connect_req'|T]) ->
     kz_amqp_util:bind_q_to_callmgr(Q, member_connect_req_routing_key(AcctId, QID)),
     bind_q(Q, AcctId, QID, CallId, T);
-bind_q(Q, AcctId, QID, CallId, ['sync_req'|T]) ->
-    kz_amqp_util:bind_q_to_kapps(Q, sync_req_routing_key(AcctId, QID)),
-    bind_q(Q, AcctId, QID, CallId, T);
 bind_q(Q, AcctId, QID, CallId, ['agent_change'|T]) ->
     kz_amqp_util:bind_q_to_kapps(Q, agent_change_routing_key(AcctId, QID)),
     bind_q(Q, AcctId, QID, CallId, T);
 bind_q(Q, AcctId, QID, CallId, ['member_addremove'|T]) ->
     kz_amqp_util:bind_q_to_kapps(Q, queue_member_routing_key(AcctId, QID)),
+    bind_q(Q, AcctId, QID, CallId, T);
+bind_q(Q, AcctId, QID, CallId, ['started_notif'|T]) ->
+    kz_amqp_util:bind_q_to_kapps(Q, started_notif_routing_key(AcctId, QID)),
     bind_q(Q, AcctId, QID, CallId, T);
 bind_q(Q, AcctId, QID, CallId, [_|T]) -> bind_q(Q, AcctId, QID, CallId, T);
 bind_q(_, _, _, _, []) -> 'ok'.
@@ -684,12 +619,12 @@ unbind_q(Q, Props) ->
     unbind_q(Q, AcctId, QID, CallId, props:get_value('restrict_to', Props)).
 
 unbind_q(Q, AcctId, QID, CallId, 'undefined') ->
-    _ = kz_amqp_util:unbind_q_from_kapps(Q, sync_req_routing_key(AcctId, QID)),
     _ = kz_amqp_util:unbind_q_from_kapps(Q, agent_change_routing_key(AcctId, QID)),
     _ = kz_amqp_util:unbind_q_from_callmgr(Q, member_call_routing_key(AcctId, QID)),
     _ = kz_amqp_util:unbind_q_from_callmgr(Q, member_call_result_routing_key(AcctId, QID, CallId)),
     _ = kz_amqp_util:unbind_q_from_callmgr(Q, member_connect_req_routing_key(AcctId, QID)),
-    _ = kz_amqp_util:unbind_q_from_kapps(Q, queue_member_routing_key(AcctId, QID));
+    _ = kz_amqp_util:unbind_q_from_kapps(Q, queue_member_routing_key(AcctId, QID)),
+    _ = kz_amqp_util:unbind_q_from_kapps(Q, started_notif_routing_key(AcctId, QID));
 unbind_q(Q, AcctId, QID, CallId, ['member_call'|T]) ->
     _ = kz_amqp_util:unbind_q_from_callmgr(Q, member_call_routing_key(AcctId, QID)),
     unbind_q(Q, AcctId, QID, CallId, T);
@@ -699,14 +634,14 @@ unbind_q(Q, AcctId, QID, CallId, ['member_call_result'|T]) ->
 unbind_q(Q, AcctId, QID, CallId, ['member_connect_req'|T]) ->
     _ = kz_amqp_util:unbind_q_from_callmgr(Q, member_connect_req_routing_key(AcctId, QID)),
     unbind_q(Q, AcctId, QID, CallId, T);
-unbind_q(Q, AcctId, QID, CallId, ['sync_req'|T]) ->
-    _ = kz_amqp_util:unbind_q_from_kapps(Q, sync_req_routing_key(AcctId, QID)),
-    unbind_q(Q, AcctId, QID, CallId, T);
 unbind_q(Q, AcctId, QID, CallId, ['agent_change'|T]) ->
     _ = kz_amqp_util:unbind_q_from_kapps(Q, agent_change_routing_key(AcctId, QID)),
     unbind_q(Q, AcctId, QID, CallId, T);
 unbind_q(Q, AcctId, QID, CallId, ['member_addremove'|T]) ->
     _ = kz_amqp_util:unbind_q_from_kapps(Q, queue_member_routing_key(AcctId, QID)),
+    unbind_q(Q, AcctId, QID, CallId, T);
+unbind_q(Q, AcctId, QID, CallId, ['started_notif'|T]) ->
+    _ = kz_amqp_util:unbind_q_from_kapps(Q, started_notif_routing_key(AcctId, QID)),
     unbind_q(Q, AcctId, QID, CallId, T);
 unbind_q(Q, AcctId, QID, CallId, [_|T]) ->
     unbind_q(Q, AcctId, QID, CallId, T);
@@ -807,15 +742,6 @@ publish_member_connect_resp(Q, API, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(API, ?MEMBER_CONNECT_RESP_VALUES, fun member_connect_resp/1),
     kz_amqp_util:targeted_publish(Q, Payload, ContentType).
 
--spec publish_member_connect_win(kz_term:ne_binary(), kz_term:api_terms()) -> 'ok'.
-publish_member_connect_win(Q, JObj) ->
-    publish_member_connect_win(Q, JObj, ?DEFAULT_CONTENT_TYPE).
-
--spec publish_member_connect_win(kz_term:ne_binary(), kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
-publish_member_connect_win(Q, API, ContentType) ->
-    {'ok', Payload} = kz_api:prepare_api_payload(API, ?MEMBER_CONNECT_WIN_VALUES, fun member_connect_win/1),
-    kz_amqp_util:targeted_publish(Q, Payload, ContentType).
-
 -spec publish_agent_timeout(kz_term:ne_binary(), kz_term:api_terms()) -> 'ok'.
 publish_agent_timeout(Q, JObj) ->
     publish_agent_timeout(Q, JObj, ?DEFAULT_CONTENT_TYPE).
@@ -852,24 +778,6 @@ publish_member_hungup(Q, API, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(API, ?MEMBER_HUNGUP_VALUES, fun member_hungup/1),
     kz_amqp_util:targeted_publish(Q, Payload, ContentType).
 
--spec publish_sync_req(kz_term:api_terms()) -> 'ok'.
-publish_sync_req(JObj) ->
-    publish_sync_req(JObj, ?DEFAULT_CONTENT_TYPE).
-
--spec publish_sync_req(kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
-publish_sync_req(API, ContentType) ->
-    {'ok', Payload} = kz_api:prepare_api_payload(API, ?SYNC_REQ_VALUES, fun sync_req/1),
-    kz_amqp_util:kapps_publish(sync_req_routing_key(API), Payload, ContentType).
-
--spec publish_sync_resp(kz_term:ne_binary(), kz_term:api_terms()) -> 'ok'.
-publish_sync_resp(Q, JObj) ->
-    publish_sync_resp(Q, JObj, ?DEFAULT_CONTENT_TYPE).
-
--spec publish_sync_resp(kz_term:ne_binary(), kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
-publish_sync_resp(Q, API, ContentType) ->
-    {'ok', Payload} = kz_api:prepare_api_payload(API, ?SYNC_RESP_VALUES, fun sync_resp/1),
-    kz_amqp_util:targeted_publish(Q, Payload, ContentType).
-
 -spec publish_agent_change(kz_term:api_terms()) -> 'ok'.
 publish_agent_change(JObj) ->
     publish_agent_change(JObj, ?DEFAULT_CONTENT_TYPE).
@@ -878,6 +786,19 @@ publish_agent_change(JObj) ->
 publish_agent_change(API, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(API, ?AGENT_CHANGE_VALUES, fun agent_change/1),
     kz_amqp_util:kapps_publish(agent_change_publish_key(API), Payload, ContentType).
+
+%%------------------------------------------------------------------------------
+%% Event for announcing that a queue has been started so that agents that are
+%% members of the queue can inform the queue of their availability
+%%------------------------------------------------------------------------------
+-spec publish_started_notif(kz_term:api_terms()) -> 'ok'.
+publish_started_notif(JObj) ->
+    publish_started_notif(JObj, ?DEFAULT_CONTENT_TYPE).
+
+-spec publish_started_notif(kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
+publish_started_notif(API, ContentType) ->
+    {'ok', Payload} = kz_api:prepare_api_payload(API, ?STARTED_NOTIF_VALUES, fun started_notif/1),
+    kz_amqp_util:kapps_publish(started_notif_routing_key(API), Payload, ContentType).
 
 -spec publish_queue_member_add(kz_term:api_terms()) -> 'ok'.
 publish_queue_member_add(JObj) ->

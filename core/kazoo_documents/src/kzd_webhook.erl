@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc Webhook document accessors
 %%% @author James Aimonetti
 %%% @end
@@ -10,6 +10,7 @@
         ,is_auto_disabled/1
         ,enable/1
         ,disable/1, disable/2
+        ,disable_updates/1
         ,disabled_message/1, disabled_message/2
         ,type/0, type/1
         ,name/1, name/2, set_name/2
@@ -67,11 +68,13 @@ disable(Hook) ->
 
 -spec disable(doc(), kz_term:api_binary()) -> doc().
 disable(Hook, Reason) ->
-    kz_json:set_values([{?IS_ENABLED, 'false'}
-                       ,{?DISABLED_MESSAGE, Reason}
-                       ]
-                      ,Hook
-                      ).
+    kz_json:set_values(disable_updates(Reason), Hook).
+
+-spec disable_updates(kz_term:api_binary()) -> kz_json:flat_proplist().
+disable_updates(Reason) ->
+    [{[?IS_ENABLED], 'false'}
+    ,{[?DISABLED_MESSAGE], Reason}
+    ].
 
 -spec disabled_message(doc()) -> kz_term:api_binary().
 disabled_message(Hook) ->
@@ -143,7 +146,7 @@ verb(Hook, Default) ->
     end.
 
 -spec safe_verbs(kz_term:api_binary(), http_verb() | Default) ->
-                        http_verb() | Default.
+          http_verb() | Default.
 safe_verbs(<<"get">>, _Default) -> <<"get">>;
 safe_verbs(<<"post">>, _Default) -> <<"post">>;
 safe_verbs(<<"put">>, _Default) -> <<"put">>;

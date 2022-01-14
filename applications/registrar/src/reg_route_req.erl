@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc Look up IP for authorization/replaying of route_req
 %%% @author James Aimonetti
 %%% @end
@@ -38,6 +38,9 @@ maybe_replay_route_req(JObj, CCVs, IP) ->
     case lookup_account_by_ip(IP) of
         {'ok', AccountCCVs} ->
             lager:debug("route req was missing account information, loading from IP ~s and replaying", [IP]),
+            %% NOTE: If this ever comes back empty for any reason it will create a replay loop
+            %%       that will not stop until a restart.
+            ?NE_BINARY = props:get_ne_binary_value(<<"Account-ID">>, AccountCCVs),
             kapi_route:publish_req(
               kz_json:set_value(<<"Custom-Channel-Vars">>
                                ,kz_json:set_values(AccountCCVs, CCVs)
@@ -54,8 +57,8 @@ maybe_replay_route_req(JObj, CCVs, IP) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec lookup_account_by_ip(kz_term:ne_binary()) ->
-                                  {'ok', kz_term:proplist()} |
-                                  {'error', 'not_found'}.
+          {'ok', kz_term:proplist()} |
+          {'error', 'not_found'}.
 lookup_account_by_ip(IP) ->
     lager:debug("looking up IP: ~s in db ~s", [IP, ?KZ_SIP_DB]),
     kapps_util:get_ccvs_by_ip(IP).

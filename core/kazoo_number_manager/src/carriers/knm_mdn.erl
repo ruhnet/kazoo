@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2016-2019, 2600Hz
+%%% @copyright (C) 2016-2021, 2600Hz
 %%% @doc Handle tower-of-power MDN phone numbers.
 %%% @author Pierre Fenoll
 %%% @end
@@ -40,9 +40,9 @@ is_local() -> 'false'.
 %% @doc Check with carrier if these numbers are registered with it.
 %% @end
 %%------------------------------------------------------------------------------
--spec check_numbers(kz_term:ne_binaries()) -> {ok, kz_json:object()} |
-                                              {error, any()}.
-check_numbers(_Numbers) -> {error, not_implemented}.
+-spec check_numbers(kz_term:ne_binaries()) -> {'ok', kz_json:object()} |
+          {'error', 'not_implemented'}.
+check_numbers(_Numbers) -> {'error', 'not_implemented'}.
 
 %%------------------------------------------------------------------------------
 %% @doc Query the local system for a quantity of available numbers
@@ -50,8 +50,8 @@ check_numbers(_Numbers) -> {error, not_implemented}.
 %% @end
 %%------------------------------------------------------------------------------
 -spec find_numbers(kz_term:ne_binary(), pos_integer(), knm_carriers:options()) ->
-                          {'ok', knm_number:knm_numbers()} |
-                          {'error', any()}.
+          {'ok', knm_number:knm_numbers()} |
+          {'error', any()}.
 find_numbers(_Prefix, _Quantity, _Options) ->
     {'error', 'not_available'}.
 

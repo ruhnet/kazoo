@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc The queue process manages two queues
 %%%   1. a private one that Agents will send member_connect_* messages
 %%%      and such
@@ -19,20 +19,17 @@
 
 %% API
 -export([start_link/4
-        ,accept_member_calls/1
-        ,member_connect_req/4
-        ,member_connect_re_req/1
+        ,member_call/3
+        ,member_connect_req/1
         ,member_connect_win/3
-        ,timeout_member_call/1, timeout_member_call/2
+        ,timeout_member_call/2
         ,timeout_agent/2
-        ,exit_member_call/1
+        ,exit_member_call/2
         ,exit_member_call_empty/1
-        ,finish_member_call/1, finish_member_call/2
+        ,finish_member_call/1
         ,ignore_member_call/3
-        ,cancel_member_call/1, cancel_member_call/2 ,cancel_member_call/3
-        ,send_sync_req/2
+        ,cancel_member_call/2, cancel_member_call/3
         ,config/1
-        ,send_sync_resp/4
 
         ,delivery/1
         ]).
@@ -54,8 +51,6 @@
 -record(state, {queue_id :: kz_term:ne_binary()
                ,account_id :: kz_term:ne_binary()
 
-                              %% PIDs of the gang
-               ,worker_sup :: pid()
                ,mgr_pid :: pid()
                ,fsm_pid :: kz_term:api_pid()
                ,shared_pid :: kz_term:api_pid()
@@ -79,6 +74,9 @@
                     ,{{'acdc_queue_handler', 'handle_call_event'}
                      ,[{<<"error">>, <<"*">>}]
                      }
+                    ,{{'acdc_queue_handler', 'handle_member_call_cancel'}
+                     ,[{<<"member">>, <<"call_cancel">>}]
+                     }
                     ,{{'acdc_queue_handler', 'handle_member_resp'}
                      ,[{<<"member">>, <<"connect_resp">>}]
                      }
@@ -87,9 +85,6 @@
                      }
                     ,{{'acdc_queue_handler', 'handle_member_retry'}
                      ,[{<<"member">>, <<"connect_retry">>}]
-                     }
-                    ,{{'acdc_queue_handler', 'handle_sync_req'}
-                     ,[{<<"queue">>, <<"sync_req">>}]
                      }
                     ]).
 
@@ -104,28 +99,19 @@
 -spec start_link(pid(), pid(), kz_term:ne_binary(), kz_term:ne_binary()) -> kz_types:startlink_ret().
 start_link(WorkerSup, MgrPid, AccountId, QueueId) ->
     gen_listener:start_link(?SERVER
-                           ,[{'bindings', [{'acdc_queue', [{'restrict_to', ['sync_req']}
-                                                          ,{'account_id', AccountId}
-                                                          ,{'queue_id', QueueId}
-                                                          ]}
-                                           | ?BINDINGS
-                                          ]}
+                           ,[{'bindings', ?BINDINGS}
                             ,{'responders', ?RESPONDERS}
                             ]
                            ,[WorkerSup, MgrPid, AccountId, QueueId]
                            ).
 
--spec accept_member_calls(pid()) -> 'ok'.
-accept_member_calls(Srv) ->
-    gen_listener:cast(Srv, {'accept_member_calls'}).
+-spec member_call(pid(), kz_json:object(), any()) -> 'ok'.
+member_call(Srv, MemberCallJObj, Delivery) ->
+    gen_listener:cast(Srv, {'member_call', MemberCallJObj, Delivery}).
 
--spec member_connect_req(pid(), kz_json:object(), any(), kz_term:api_binary()) -> 'ok'.
-member_connect_req(Srv, MemberCallJObj, Delivery, Url) ->
-    gen_listener:cast(Srv, {'member_connect_req', MemberCallJObj, Delivery, Url}).
-
--spec member_connect_re_req(pid()) -> 'ok'.
-member_connect_re_req(Srv) ->
-    gen_listener:cast(Srv, {'member_connect_re_req'}).
+-spec member_connect_req(pid()) -> 'ok'.
+member_connect_req(Srv) ->
+    gen_listener:cast(Srv, {'member_connect_req'}).
 
 -spec member_connect_win(pid(), kz_json:object(), kz_term:proplist()) -> 'ok'.
 member_connect_win(Srv, RespJObj, QueueOpts) ->
@@ -135,17 +121,13 @@ member_connect_win(Srv, RespJObj, QueueOpts) ->
 timeout_agent(Srv, RespJObj) ->
     gen_listener:cast(Srv, {'timeout_agent', RespJObj}).
 
--spec timeout_member_call(pid()) -> 'ok'.
-timeout_member_call(Srv) ->
-    timeout_member_call(Srv, 'undefined').
-
 -spec timeout_member_call(pid(), kz_term:api_object()) -> 'ok'.
-timeout_member_call(Srv, JObj) ->
-    gen_listener:cast(Srv, {'timeout_member_call', JObj}).
+timeout_member_call(Srv, WinnerJObj) ->
+    gen_listener:cast(Srv, {'timeout_member_call', WinnerJObj}).
 
--spec exit_member_call(pid()) -> 'ok'.
-exit_member_call(Srv) ->
-    gen_listener:cast(Srv, {'exit_member_call'}).
+-spec exit_member_call(pid(), kz_term:api_object()) -> 'ok'.
+exit_member_call(Srv, WinnerJObj) ->
+    gen_listener:cast(Srv, {'exit_member_call', WinnerJObj}).
 
 -spec exit_member_call_empty(pid()) -> 'ok'.
 exit_member_call_empty(Srv) ->
@@ -154,14 +136,6 @@ exit_member_call_empty(Srv) ->
 -spec finish_member_call(pid()) -> 'ok'.
 finish_member_call(Srv) ->
     gen_listener:cast(Srv, {'finish_member_call'}).
-
--spec finish_member_call(pid(), kz_json:object()) -> 'ok'.
-finish_member_call(Srv, AcceptJObj) ->
-    gen_listener:cast(Srv, {'finish_member_call', AcceptJObj}).
-
--spec cancel_member_call(pid()) -> 'ok'.
-cancel_member_call(Srv) ->
-    gen_listener:cast(Srv, {'cancel_member_call'}).
 
 -spec cancel_member_call(pid(), kz_json:object()) -> 'ok'.
 cancel_member_call(Srv, RejectJObj) ->
@@ -175,18 +149,10 @@ cancel_member_call(Srv, MemberCallJObj, Delivery) ->
 ignore_member_call(Srv, Call, Delivery) ->
     gen_listener:cast(Srv, {'ignore_member_call', Call, Delivery}).
 
--spec send_sync_req(pid(), kz_term:ne_binary()) -> 'ok'.
-send_sync_req(Srv, Type) ->
-    gen_listener:cast(Srv, {'send_sync_req', Type}).
-
 -spec config(pid()) ->
-                    {kz_term:ne_binary(), kz_term:ne_binary()}.
+          {kz_term:ne_binary(), kz_term:ne_binary()}.
 config(Srv) ->
     gen_listener:call(Srv, 'config').
-
--spec send_sync_resp(pid(), atom(), any(), kz_json:object()) -> 'ok'.
-send_sync_resp(Srv, Strategy, StrategyState, ReqJObj) ->
-    gen_listener:cast(Srv, {'send_sync_resp', Strategy, StrategyState, ReqJObj}).
 
 -spec delivery(pid()) -> gen_listener:basic_deliver().
 delivery(Srv) ->
@@ -204,13 +170,10 @@ delivery(Srv) ->
 init([WorkerSup, MgrPid, AccountId, QueueId]) ->
     kz_util:put_callid(QueueId),
     lager:debug("starting queue ~s", [QueueId]),
-    AccountDb = kz_util:format_account_id(AccountId, 'encoded'),
-    {'ok', QueueJObj} = kz_datamgr:open_cache_doc(AccountDb, QueueId),
-    gen_listener:cast(self(), {'start_friends', QueueJObj}),
+    gen_listener:cast(self(), {'get_friends', WorkerSup}),
     {'ok', #state{queue_id = QueueId
                  ,account_id = AccountId
                  ,my_id = acdc_util:proc_id()
-                 ,worker_sup = WorkerSup
                  ,mgr_pid = MgrPid
                  }}.
 
@@ -233,79 +196,50 @@ handle_call(_Request, _From, State) ->
 %% @doc Handling cast messages.
 %% @end
 %%------------------------------------------------------------------------------
-find_pid_from_supervisor({'ok', P}) when is_pid(P) ->
-    {'ok', P};
-find_pid_from_supervisor({'error', {'already_started', P}}) when is_pid(P) ->
-    {'ok', P};
-find_pid_from_supervisor(E) -> E.
-
--spec start_shared_queue(state(), pid(), kz_term:api_integer()) -> {'noreply', state()}.
-start_shared_queue(#state{account_id=AccountId
-                         ,queue_id=QueueId
-                         ,worker_sup=WorkerSup
-                         }=State, FSMPid, Priority) ->
-    {'ok', SharedPid} =
-        find_pid_from_supervisor(
-          acdc_queue_worker_sup:start_shared_queue(WorkerSup, FSMPid, AccountId, QueueId, Priority)
-         ),
-    lager:debug("started shared queue listener: ~p", [SharedPid]),
-
-    {'noreply', State#state{fsm_pid = FSMPid
-                           ,shared_pid = SharedPid
-                           ,my_id = acdc_util:proc_id(FSMPid)
-                           }
-    }.
-
 -spec handle_cast(any(), state()) -> kz_types:handle_cast_ret_state(state()).
-handle_cast({'start_friends', QueueJObj}, #state{worker_sup=WorkerSup
-                                                ,mgr_pid=MgrPid
-                                                }=State) ->
-    Priority = kz_json:get_integer_value(<<"max_priority">>, QueueJObj),
-    case find_pid_from_supervisor(acdc_queue_worker_sup:start_fsm(WorkerSup, MgrPid, QueueJObj)) of
-        {'ok', FSMPid} ->
-            lager:debug("started queue FSM: ~p", [FSMPid]),
-            start_shared_queue(State, FSMPid, Priority);
-        {'error', 'already_present'} ->
-            lager:debug("queue FSM is already present"),
-            case acdc_queue_worker_sup:fsm(WorkerSup) of
-                FSMPid when is_pid(FSMPid) ->
-                    lager:debug("found queue FSM pid: ~p", [FSMPid]),
-                    start_shared_queue(State, FSMPid, Priority);
-                'undefined' ->
-                    lager:debug("no queue FSM pid found"),
-                    {'stop', 'failed_fsm', State}
-            end
-    end;
+handle_cast({'get_friends', WorkerSup}, State) ->
+    FSMPid = acdc_queue_worker_sup:fsm(WorkerSup),
+    lager:debug("got queue FSM: ~p", [FSMPid]),
+    SharedPid = acdc_queue_worker_sup:shared_queue(WorkerSup),
+    lager:debug("got shared queue listener: ~p", [SharedPid]),
+    {'noreply', State#state{fsm_pid=FSMPid
+                           ,shared_pid=SharedPid
+                           }};
 handle_cast({'gen_listener', {'created_queue', Q}}, #state{my_q='undefined'}=State) ->
     {'noreply', State#state{my_q=Q}, 'hibernate'};
 
-handle_cast({'member_connect_req', MemberCallJObj, Delivery, _Url}
-           ,#state{my_q=MyQ
-                  ,my_id=MyId
-                  ,account_id=AccountId
-                  ,queue_id=QueueId
-                  }=State) ->
+handle_cast({'member_call', MemberCallJObj, Delivery}, #state{queue_id=QueueId
+                                                             ,account_id=AccountId
+                                                             }=State) ->
     Call = kapps_call:from_json(kz_json:get_value(<<"Call">>, MemberCallJObj)),
+    CallId = kapps_call:call_id(Call),
 
-    kz_util:put_callid(kapps_call:call_id(Call)),
+    kz_util:put_callid(CallId),
 
     acdc_util:bind_to_call_events(Call),
-    lager:debug("bound to call events for ~s", [kapps_call:call_id(Call)]),
-    send_member_connect_req(kapps_call:call_id(Call), AccountId, QueueId, MyQ, MyId),
+    lager:debug("bound to call events for ~s", [CallId]),
+
+    %% Be ready in case a cancel comes in while queue_listener is handling call
+    gen_listener:add_binding(self(), 'acdc_queue', [{'restrict_to', ['member_call_result']}
+                                                   ,{'account_id', AccountId}
+                                                   ,{'queue_id', QueueId}
+                                                   ,{'callid', CallId}
+                                                   ]),
 
     {'noreply', State#state{call=Call
                            ,delivery=Delivery
                            ,member_call_queue=kz_json:get_value(<<"Server-ID">>, MemberCallJObj)
-                           }
-    ,'hibernate'};
-handle_cast({'member_connect_re_req'}, #state{my_q=MyQ
-                                             ,my_id=MyId
-                                             ,account_id=AccountId
-                                             ,queue_id=QueueId
-                                             ,call=Call
-                                             }=State) ->
+                           }};
+
+handle_cast({'member_connect_req'}, #state{queue_id=QueueId
+                                          ,account_id=AccountId
+                                          ,my_id=MyId
+                                          ,my_q=MyQ
+                                          ,call=Call
+                                          }=State) ->
     send_member_connect_req(kapps_call:call_id(Call), AccountId, QueueId, MyQ, MyId),
     {'noreply', State};
+
 handle_cast({'member_connect_win', RespJObj, QueueOpts}, #state{my_q=MyQ
                                                                ,my_id=MyId
                                                                ,call=Call
@@ -321,115 +255,43 @@ handle_cast({'timeout_agent', RespJObj}, #state{queue_id=QueueId
     lager:debug("timing out winning agent"),
     send_agent_timeout(RespJObj, Call, QueueId),
     {'noreply', State#state{agent_id='undefined'}, 'hibernate'};
-handle_cast({'timeout_member_call', JObj}, #state{delivery=Delivery
-                                                 ,call=Call
-                                                 ,shared_pid=Pid
-                                                 ,member_call_queue=Q
-                                                 ,account_id=AccountId
-                                                 ,queue_id=QueueId
-                                                 ,my_id=MyId
-                                                 ,agent_id=AgentId
-                                                 }=State) ->
+handle_cast({'timeout_member_call', WinnerJObj}, #state{call=Call
+                                                       ,queue_id=QueueId
+                                                       ,agent_id=AgentId
+                                                       }=State) ->
     lager:debug("member call has timed out, we're done"),
 
-    acdc_util:unbind_from_call_events(Call),
-    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-
-    maybe_timeout_agent(AgentId, QueueId, Call, JObj),
-
-    publish_queue_member_remove(AccountId, QueueId, kapps_call:call_id(Call)),
-    acdc_queue_shared:ack(Pid, Delivery),
-    send_member_call_failure(Q, AccountId, QueueId, kapps_call:call_id(Call), MyId, AgentId),
+    maybe_timeout_agent(AgentId, QueueId, Call, WinnerJObj),
+    handle_call_failure(State),
 
     {'noreply', clear_call_state(State), 'hibernate'};
-handle_cast({'ignore_member_call', Call, Delivery}, #state{shared_pid=Pid}=State) ->
+handle_cast({'ignore_member_call', Call, Delivery}, #state{shared_pid=SharedPid}=State) ->
     lager:debug("ignoring member call ~s, moving on", [kapps_call:call_id(Call)]),
-    acdc_util:unbind_from_call_events(Call),
-    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-    acdc_queue_shared:ack(Pid, Delivery),
+    ack_and_unbind(Call, SharedPid, Delivery),
     {'noreply', clear_call_state(State), 'hibernate'};
-handle_cast({'exit_member_call'}, #state{delivery=Delivery
-                                        ,call=Call
-                                        ,shared_pid=Pid
-                                        ,member_call_queue=Q
-                                        ,account_id=AccountId
-                                        ,queue_id=QueueId
-                                        ,my_id=MyId
-                                        ,agent_id=AgentId
-                                        }=State) ->
+handle_cast({'exit_member_call', WinnerJObj}, #state{call=Call
+                                                    ,queue_id=QueueId
+                                                    ,agent_id=AgentId
+                                                    }=State) ->
     lager:debug("member call has exited the queue, we're done"),
 
-    acdc_util:unbind_from_call_events(Call),
-    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-    publish_queue_member_remove(AccountId, QueueId, kapps_call:call_id(Call)),
-    acdc_queue_shared:ack(Pid, Delivery),
-    send_member_call_failure(Q, AccountId, QueueId, kapps_call:call_id(Call), MyId, AgentId, <<"Caller exited the queue via DTMF">>),
+    maybe_timeout_agent(AgentId, QueueId, Call, WinnerJObj),
+    handle_call_failure(State, <<"Caller exited the queue via DTMF">>),
 
     {'noreply', clear_call_state(State), 'hibernate'};
-handle_cast({'exit_member_call_empty'}, #state{delivery=Delivery
-                                              ,call=Call
-                                              ,shared_pid=Pid
-                                              ,member_call_queue=Q
-                                              ,account_id=AccountId
-                                              ,queue_id=QueueId
-                                              ,my_id=MyId
-                                              ,agent_id=AgentId
-                                              }=State) ->
+handle_cast({'exit_member_call_empty'}, State) ->
     lager:debug("no agents left in queue to handle callers, kick everyone out"),
 
-    acdc_util:unbind_from_call_events(Call),
-    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-    publish_queue_member_remove(AccountId, QueueId, kapps_call:call_id(Call)),
-    acdc_queue_shared:ack(Pid, Delivery),
-    send_member_call_failure(Q, AccountId, QueueId, kapps_call:call_id(Call), MyId, AgentId, <<"No agents left in queue">>),
+    handle_call_failure(State, <<"No agents left in queue">>),
 
     {'noreply', clear_call_state(State), 'hibernate'};
 handle_cast({'finish_member_call'}, #state{call='undefined'}=State) ->
     {'noreply', State};
-handle_cast({'finish_member_call'}, #state{delivery=Delivery
-                                          ,call=Call
-                                          ,shared_pid=Pid
-                                          ,member_call_queue=Q
-                                          ,account_id=AccountId
-                                          ,queue_id=QueueId
-                                          ,my_id=MyId
-                                          ,agent_id=AgentId
-                                          }=State) ->
+handle_cast({'finish_member_call'}, State) ->
     lager:debug("agent has taken care of member, we're done"),
 
-    acdc_util:unbind_from_call_events(Call),
-    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-    acdc_queue_shared:ack(Pid, Delivery),
-    send_member_call_success(Q, AccountId, QueueId, MyId, AgentId, kapps_call:call_id(Call)),
+    handle_call_success(State),
 
-    {'noreply', clear_call_state(State), 'hibernate'};
-handle_cast({'finish_member_call', _AcceptJObj}, #state{delivery=Delivery
-                                                       ,call=Call
-                                                       ,shared_pid=Pid
-                                                       ,member_call_queue=Q
-                                                       ,account_id=AccountId
-                                                       ,queue_id=QueueId
-                                                       ,my_id=MyId
-                                                       ,agent_id=AgentId
-                                                       }=State) ->
-    lager:debug("agent has taken care of member, we're done"),
-
-    acdc_util:unbind_from_call_events(Call),
-    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-    acdc_queue_shared:ack(Pid, Delivery),
-    send_member_call_success(Q, AccountId, QueueId, MyId, AgentId, kapps_call:call_id(Call)),
-
-    {'noreply', clear_call_state(State), 'hibernate'};
-handle_cast({'cancel_member_call'}, #state{delivery='undefined'}=State) ->
-    lager:debug("empty cancel member, no delivery info"),
-    {'noreply', State};
-handle_cast({'cancel_member_call'}, #state{delivery=Delivery
-                                          ,call=Call
-                                          ,shared_pid=Pid
-                                          }=State) ->
-    lager:debug("cancel member_call"),
-
-    _ = maybe_nack(Call, Delivery, Pid),
     {'noreply', clear_call_state(State), 'hibernate'};
 handle_cast({'cancel_member_call', _RejectJObj}, #state{delivery='undefined'}=State) ->
     lager:debug("cancel a member_call that I don't have delivery info for"),
@@ -448,16 +310,6 @@ handle_cast({'cancel_member_call', _RejectJObj}, #state{queue_id=QueueId
 handle_cast({'cancel_member_call', _MemberCallJObj, Delivery}, #state{shared_pid=Pid}=State) ->
     lager:debug("can't handle the member_call, sending it back up"),
     acdc_queue_shared:nack(Pid, Delivery),
-    {'noreply', State};
-handle_cast({'send_sync_req', Type}, #state{my_q=MyQ
-                                           ,my_id=MyId
-                                           ,account_id=AccountId
-                                           ,queue_id=QueueId
-                                           }=State) ->
-    send_sync_req(MyQ, MyId, AccountId, QueueId, Type),
-    {'noreply', State};
-handle_cast({'send_sync_resp', Strategy, StrategyState, ReqJObj}, #state{my_id=Id}=State) ->
-    publish_sync_resp(Strategy, StrategyState, ReqJObj, Id),
     {'noreply', State};
 handle_cast({'gen_listener',{'is_consuming',_IsConsuming}}, State) ->
     {'noreply', State};
@@ -507,13 +359,55 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
+%% @doc Notify various listeners about success in handling a call and stop
+%% tracking events for the call.
+%% @end
+%%------------------------------------------------------------------------------
+-spec handle_call_success(state()) -> 'ok'.
+handle_call_success(#state{queue_id=QueueId
+                          ,account_id=AccountId
+                          ,shared_pid=SharedPid
+                          ,my_id=MyId
+                          ,member_call_queue=Q
+                          ,call=Call
+                          ,agent_id=AgentId
+                          ,delivery=Delivery
+                          }) ->
+    ack_and_unbind(Call, SharedPid, Delivery),
+    send_member_call_success(Q, AccountId, QueueId, MyId, AgentId, kapps_call:call_id(Call)).
+
+%%------------------------------------------------------------------------------
+%% @doc Notify various listeners about a failure to handle a call and stop
+%% tracking events for the call.
+%% @end
+%%------------------------------------------------------------------------------
+-spec handle_call_failure(state()) -> 'ok'.
+handle_call_failure(State) ->
+    handle_call_failure(State, 'undefined').
+
+-spec handle_call_failure(state(), kz_term:api_ne_binary()) -> 'ok'.
+handle_call_failure(#state{queue_id=QueueId
+                          ,account_id=AccountId
+                          ,shared_pid=SharedPid
+                          ,my_id=MyId
+                          ,member_call_queue=Q
+                          ,call=Call
+                          ,agent_id=AgentId
+                          ,delivery=Delivery
+                          }, Reason) ->
+    CallId = kapps_call:call_id(Call),
+    publish_queue_member_remove(AccountId, QueueId, CallId),
+    ack_and_unbind(Call, SharedPid, Delivery),
+    send_member_call_failure(Q, AccountId, QueueId, CallId, MyId, AgentId, Reason).
+
+%%------------------------------------------------------------------------------
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_timeout_agent(kz_term:api_object(), kz_term:ne_binary(), kapps_call:call(), kz_json:object()) -> 'ok'.
+-spec maybe_timeout_agent(kz_term:api_object(), kz_term:ne_binary(), kapps_call:call(), kz_term:api_object()) -> 'ok'.
 maybe_timeout_agent('undefined', _QueueId, _Call, _JObj) -> 'ok';
+maybe_timeout_agent(_AgentId, _QueueId, _Call, 'undefined') -> 'ok';
 maybe_timeout_agent(_AgentId, QueueId, Call, JObj) ->
-    lager:debug("timing out winning agent because they should not be able to pick up after the queue timeout"),
     send_agent_timeout(JObj, Call, QueueId).
 
 -spec send_member_connect_req(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
@@ -531,15 +425,15 @@ send_member_connect_req(CallId, AccountId, QueueId, MyQ, MyId) ->
 -spec send_member_connect_win(kz_json:object(), kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:proplist()) -> 'ok'.
 send_member_connect_win(RespJObj, Call, QueueId, MyQ, MyId, QueueOpts) ->
     CallJSON = kapps_call:to_json(Call),
-    Q = kz_json:get_value(<<"Server-ID">>, RespJObj),
     Win = props:filter_undefined(
             [{<<"Call">>, CallJSON}
             ,{<<"Process-ID">>, MyId}
             ,{<<"Agent-Process-ID">>, kz_json:get_value(<<"Agent-Process-ID">>, RespJObj)}
             ,{<<"Queue-ID">>, QueueId}
+            ,{<<"Agent-ID">>, kz_json:get_value(<<"Agent-ID">>, RespJObj)}
              | QueueOpts ++ kz_api:default_headers(MyQ, ?APP_NAME, ?APP_VERSION)
             ]),
-    publish(Q, Win, fun kapi_acdc_queue:publish_member_connect_win/2).
+    publish(Win, fun kapi_acdc_agent:publish_member_connect_win/1).
 
 -spec send_agent_timeout(kz_json:object(), kapps_call:call(), kz_term:ne_binary()) -> 'ok'.
 send_agent_timeout(RespJObj, Call, QueueId) ->
@@ -563,8 +457,6 @@ send_member_call_success(Q, AccountId, QueueId, MyId, AgentId, CallId) ->
              ]),
     publish(Q, Resp, fun kapi_acdc_queue:publish_member_call_success/2).
 
-send_member_call_failure(Q, AccountId, QueueId, CallId, MyId, AgentId) ->
-    send_member_call_failure(Q, AccountId, QueueId, CallId, MyId, AgentId, 'undefined').
 send_member_call_failure(Q, AccountId, QueueId, CallId, MyId, AgentId, Reason) ->
     Resp = props:filter_undefined(
              [{<<"Account-ID">>, AccountId}
@@ -586,29 +478,6 @@ publish_queue_member_remove(AccountId, QueueId, CallId) ->
            ],
     kapi_acdc_queue:publish_queue_member_remove(Prop).
 
-send_sync_req(MyQ, MyId, AccountId, QueueId, Type) ->
-    Resp = props:filter_undefined(
-             [{<<"Account-ID">>, AccountId}
-             ,{<<"Queue-ID">>, QueueId}
-             ,{<<"Process-ID">>, MyId}
-             ,{<<"Current-Strategy">>, Type}
-             ,{<<"Server-ID">>, MyQ}
-              | kz_api:default_headers(MyQ, ?APP_NAME, ?APP_VERSION)
-             ]),
-    publish(Resp, fun kapi_acdc_queue:publish_sync_req/1).
-
-publish_sync_resp(Strategy, StrategyState, ReqJObj, Id) ->
-    Resp = props:filter_undefined(
-             [{<<"Account-ID">>, kz_json:get_value(<<"Account-ID">>, ReqJObj)}
-             ,{<<"Queue-ID">>, kz_json:get_value(<<"Queue-ID">>, ReqJObj)}
-             ,{<<"Msg-ID">>, kz_json:get_value(<<"Msg-ID">>, ReqJObj)}
-             ,{<<"Current-Strategy">>, kz_term:to_binary(Strategy)}
-             ,{<<"Strategy-State">>, StrategyState}
-             ,{<<"Process-ID">>, Id}
-              | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
-             ]),
-    publish(kz_json:get_value(<<"Server-ID">>, ReqJObj), Resp, fun kapi_acdc_queue:publish_sync_resp/2).
-
 -spec maybe_nack(kapps_call:call(), gen_listener:basic_deliver(), pid()) -> boolean().
 maybe_nack(Call, Delivery, SharedPid) ->
     case is_call_alive(Call) of
@@ -620,11 +489,20 @@ maybe_nack(Call, Delivery, SharedPid) ->
             'true';
         'false' ->
             lager:debug("call is probably not active, ack it (so its gone)"),
-            acdc_util:unbind_from_call_events(Call),
-            lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
-            acdc_queue_shared:ack(SharedPid, Delivery),
+            ack_and_unbind(Call, SharedPid, Delivery),
             'false'
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc Ack the AMQP msg delivery for a queue call and unbind from call events
+%% for the call.
+%% @end
+%%------------------------------------------------------------------------------
+-spec ack_and_unbind(kapps_call:call(), pid(), gen_listener:basic_deliver()) -> 'ok'.
+ack_and_unbind(Call, SharedPid, Delivery) ->
+    acdc_util:unbind_from_call_events(Call),
+    lager:debug("unbound from call events for ~s", [kapps_call:call_id(Call)]),
+    acdc_queue_shared:ack(SharedPid, Delivery).
 
 -spec is_call_alive(kapps_call:call() | kz_term:ne_binary()) -> boolean().
 is_call_alive(Call) ->
@@ -638,10 +516,22 @@ is_call_alive(Call) ->
     end.
 
 -spec clear_call_state(state()) -> state().
-clear_call_state(#state{account_id=AccountId
+clear_call_state(#state{call=Call
+                       ,account_id=AccountId
                        ,queue_id=QueueId
                        }=State) ->
     _ = acdc_util:queue_presence_update(AccountId, QueueId),
+
+    case Call of
+        'undefined' -> 'ok';
+        _ ->
+            CallId = kapps_call:call_id(Call),
+            gen_listener:rm_binding(self(), 'acdc_queue', [{'restrict_to', ['member_call_result']}
+                                                          ,{'account_id', AccountId}
+                                                          ,{'queue_id', QueueId}
+                                                          ,{'callid', CallId}
+                                                          ])
+    end,
 
     kz_util:put_callid(QueueId),
     State#state{call='undefined'

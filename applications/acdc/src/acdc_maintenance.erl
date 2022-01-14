@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2019, 2600Hz
+%%% @copyright (C) 2013-2021, 2600Hz
 %%% @doc Helpers for cli commands
 %%% @author James Aimonetti
 %%% @end
@@ -30,6 +30,9 @@
         ,agent_resume/2
         ,agent_queue_login/3
         ,agent_queue_logout/3
+
+        ,start_queue_diagnostics/2
+        ,stop_queue_diagnostics/1
         ]).
 
 -include("acdc.hrl").
@@ -111,7 +114,7 @@ log_current_agent(QueueSup) ->
     QueueM = acdc_queue_sup:manager(QueueSup),
     {_AccountId, QueueId} = acdc_queue_manager:config(QueueM),
     io:format(" ~35s | ~s~n", [QueueId
-                              ,kz_binary:join(acdc_queue_manager:current_agents(QueueM))
+                              ,kz_binary:join(acdc_queue_manager:agents(QueueM))
                               ]).
 
 -spec current_calls(kz_term:ne_binary()) -> 'ok'.
@@ -302,7 +305,7 @@ flush_call_stat(CallId) ->
             acdc_stats:call_abandoned(kz_json:get_value(<<"Account-ID">>, Call)
                                      ,kz_json:get_value(<<"Queue-ID">>, Call)
                                      ,CallId
-                                     ,'INTERNAL_ERROR'
+                                     ,?ABANDON_INTERNAL_ERROR
                                      ),
             io:format("setting call to 'abandoned'~n", [])
     end.
@@ -458,7 +461,7 @@ agent_login(AcctId, AgentId) ->
                ,{<<"Agent-ID">>, AgentId}
                 |  kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                ]),
-    kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_login/1),
+    _ = kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_login/1),
     lager:info("published login update for agent").
 
 -spec agent_logout(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
@@ -469,24 +472,23 @@ agent_logout(AcctId, AgentId) ->
                ,{<<"Agent-ID">>, AgentId}
                 |  kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                ]),
-    kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_logout/1),
+    _ = kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_logout/1),
     lager:info("published logout update for agent").
 
 -spec agent_pause(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 agent_pause(AcctId, AgentId) ->
-    Timeout = kapps_config:get_integer(?CONFIG_CAT, <<"default_agent_pause_timeout">>, 600),
-    agent_pause(AcctId, AgentId, Timeout).
+    agent_pause(AcctId, AgentId, ?DEFAULT_AGENT_PAUSE_TIMEOUT).
 
--spec agent_pause(kz_term:ne_binary(), kz_term:ne_binary(), pos_integer()) -> 'ok'.
+-spec agent_pause(kz_term:ne_binary(), kz_term:ne_binary(), pos_integer() | kz_term:ne_binary()) -> 'ok'.
 agent_pause(AcctId, AgentId, Timeout) ->
     kz_util:put_callid(?MODULE),
     Update = props:filter_undefined(
                [{<<"Account-ID">>, AcctId}
                ,{<<"Agent-ID">>, AgentId}
-               ,{<<"Timeout">>, kz_term:to_integer(Timeout)}
+               ,{<<"Time-Limit">>, Timeout}
                 | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                ]),
-    kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_pause/1),
+    _ = kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_pause/1),
     lager:info("published pause for agent").
 
 -spec agent_resume(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
@@ -497,7 +499,7 @@ agent_resume(AcctId, AgentId) ->
                ,{<<"Agent-ID">>, AgentId}
                 |  kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                ]),
-    kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_resume/1),
+    _ = kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_resume/1),
     lager:info("published resume for agent").
 
 -spec agent_queue_login(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
@@ -509,7 +511,7 @@ agent_queue_login(AcctId, AgentId, QueueId) ->
                ,{<<"Queue-ID">>, QueueId}
                 |  kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                ]),
-    kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_login_queue/1),
+    _ = kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_login_queue/1),
     lager:info("published login update for agent").
 
 -spec agent_queue_logout(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
@@ -521,5 +523,33 @@ agent_queue_logout(AcctId, AgentId, QueueId) ->
                ,{<<"Queue-ID">>, QueueId}
                 |  kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                ]),
-    kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_logout_queue/1),
+    _ = kz_amqp_worker:cast(Update, fun kapi_acdc_agent:publish_logout_queue/1),
     lager:info("published logout update for agent").
+
+%%------------------------------------------------------------------------------
+%% @doc Start queue diagnostics for the specified queue. Changes to the strategy
+%% state of the queue will be printed to the Erlang console.
+%% @end
+%%------------------------------------------------------------------------------
+-spec start_queue_diagnostics(kz_term:text(), kz_term:text()) -> 'ok'.
+start_queue_diagnostics(AccountId, QueueId) ->
+    case acdc_queue_manager_diag_sup:start_diagnostics(kz_term:to_binary(AccountId), kz_term:to_binary(QueueId)) of
+        {'ok', Pid} ->
+            io:format("This diagnostic process is expensive. Remember to stop diagnostics when you are done!~n"
+                      ++ "To stop: `~p:~p(list_to_pid(\"~s\")).`~n"
+                     ,[?MODULE, 'stop_queue_diagnostics', pid_to_list(Pid)]
+                     );
+        {'error', E} ->
+            io:format("Failed to start queue diagnostics: ~p~n", [E])
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Stop queue diagnostics previously started by `start_queue_diagnostics'.
+%% @end
+%%------------------------------------------------------------------------------
+-spec stop_queue_diagnostics(pid() | kz_term:text()) -> any().
+stop_queue_diagnostics(DiagnosticsPid) when is_pid(DiagnosticsPid) ->
+    acdc_queue_manager_diag:stop(DiagnosticsPid);
+stop_queue_diagnostics(DiagnosticsPid) ->
+    PidStr = kz_term:to_list(DiagnosticsPid),
+    stop_queue_diagnostics(list_to_pid(PidStr)).

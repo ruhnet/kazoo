@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc Stat util functions
 %%% @author James Aimonetti
 %%% @end
@@ -13,6 +13,7 @@
         ,queue_id/2
 
         ,get_query_limit/1
+        ,apply_query_window_wiggle_room/2
         ,db_name/1
         ]).
 
@@ -23,11 +24,12 @@
 wait_time(<<"paused">>, _) -> 'undefined';
 wait_time(_, JObj) -> kz_json:get_integer_value(<<"Wait-Time">>, JObj).
 
--spec pause_time(kz_term:ne_binary(), kz_json:object()) -> kz_term:api_integer().
+-spec pause_time(kz_term:ne_binary(), kz_json:object()) -> timeout() | 'undefined'.
 pause_time(<<"paused">>, JObj) ->
-    case kz_json:get_integer_value(<<"Pause-Time">>, JObj) of
-        'undefined' -> kz_json:get_integer_value(<<"Wait-Time">>, JObj);
-        PT -> PT
+    case kz_json:get_value(<<"Timeout">>, JObj) of
+        'undefined' -> 'undefined';
+        <<"infinity">> -> 'infinity';
+        Timeout -> kz_term:to_integer(Timeout)
     end;
 pause_time(_, _JObj) -> 'undefined'.
 
@@ -61,6 +63,22 @@ get_query_limit(JObj, 'false') ->
         'undefined' -> 'no_limit';
         N when N < 1 -> 1;
         N -> N
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc If a query timestamp value is less than the minimum permitted by
+%% validation, allow a little wiggle room in case the request just took a little
+%% while to be processed.
+%% @end
+%%------------------------------------------------------------------------------
+-spec apply_query_window_wiggle_room(pos_integer(), pos_integer()) -> pos_integer().
+apply_query_window_wiggle_room(Timestamp, Minimum) ->
+    Offset = Minimum - Timestamp,
+    WithinWiggleRoom = Offset < ?QUERY_WINDOW_WIGGLE_ROOM_S,
+    case Offset =< 0 of
+        'true' -> Timestamp;
+        'false' when WithinWiggleRoom -> Minimum;
+        'false' -> Timestamp
     end.
 
 -spec db_name(kz_term:ne_binary()) -> kz_term:ne_binary().

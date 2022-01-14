@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2019, 2600Hz
+%%% @copyright (C) 2012-2021, 2600Hz
 %%% @doc
 %%% @author James Aimonetti
 %%% @end
@@ -97,7 +97,7 @@ update_acdc_actor(Call, AgentId, <<"user">>) ->
     AcctId = kapps_call:account_id(Call),
 
     case acdc_agent_util:most_recent_status(AcctId, AgentId) of
-        {'ok', <<"logout">>} ->
+        {'ok', <<"logged_out">>} ->
             update_acdc_agent(Call, AcctId, AgentId, <<"login">>, fun kapi_acdc_agent:publish_login/1);
         {'ok', <<"pause">>} ->
             update_acdc_agent(Call, AcctId, AgentId, <<"resume">>, fun kapi_acdc_agent:publish_resume/1);
@@ -151,7 +151,7 @@ update_agent_device(Call, AgentId, <<"logout">>) ->
 update_agent_device(_, _, _) -> {'ok', 'ok'}.
 
 -spec move_agent_device(kapps_call:call(), kz_term:ne_binary(), kz_json:object()) ->
-                               {'ok', kz_json:object()}.
+          {'ok', kz_json:object()}.
 move_agent_device(Call, AgentId, Device) ->
     DeviceId = kz_doc:id(Device),
 

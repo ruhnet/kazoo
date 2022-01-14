@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2021, 2600Hz
 %%% @doc Supervisor for started caches
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -38,9 +38,9 @@ start_link(Name, ExpirePeriod) when is_integer(ExpirePeriod), ExpirePeriod > 0 -
 start_link(Name, ExpirePeriod, Props) ->
     supervisor:start_link({'local', sup_name(Name)}, ?MODULE, [Name, ExpirePeriod, Props]).
 
--spec stop(atom()) -> 'true'.
+-spec stop(atom()) -> 'ok'.
 stop(Name) ->
-    exit(whereis(sup_name(Name)), 'shutdown').
+    gen_server:stop(sup_name(Name)).
 
 -spec sup_name(atom()) -> atom().
 sup_name(Name) ->
@@ -68,15 +68,15 @@ init([Name, ExpirePeriod, Props]) ->
     Children = lists:foldl(fun(Child, Acc) -> maybe_add_child_spec(Child, Name, Props, Acc) end
                           ,[?WORKER_ARGS('kz_cache_lru', [Name, ExpirePeriod])
                            ,?WORKER_ARGS('kz_cache_ets', [Name])
+                           ,?WORKER_ARGS('kz_cache_processes', [Name])
                            ]
                           ,['kz_cache_listener', 'kz_cache_nodes']
                           ),
 
     {'ok', {SupFlags, lists:reverse(Children)}}.
 
-
 -spec maybe_add_child_spec(atom(), atom(), kz_cache:start_options(), kz_types:sup_child_specs()) ->
-                                  kz_types:sup_child_specs().
+          kz_types:sup_child_specs().
 maybe_add_child_spec('kz_cache_listener', Name, Props, Children) ->
     case props:get_value('origin_bindings', Props) of
         'undefined' -> Children;

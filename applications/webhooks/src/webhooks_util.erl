@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2019, 2600Hz
+%%% @copyright (C) 2013-2021, 2600Hz
 %%% @doc
 %%% @author Peter Defebvre
 %%% @end
@@ -23,6 +23,8 @@
 
         ,account_expires_time/1
         ,system_expires_time/0
+        ,account_failure_count/1
+        ,system_failure_count/0
 
         ,reenable/2
         ,init_metadata/2
@@ -34,6 +36,10 @@
         ,table_options/0
         ,gift_data/0
         ]).
+
+-ifdef(TEST).
+-export([note_failed_attempt/3]).
+-endif.
 
 -include("webhooks.hrl").
 
@@ -207,37 +213,45 @@ do_fire(#webhook{uri = ?NE_BINARY = URI
     Fired = kz_http:get(Url, Headers, ?HTTP_OPTS),
     handle_resp(Hook, EventId, JObj, Debug, Fired);
 do_fire(#webhook{uri = ?NE_BINARY = URI
-                ,http_verb = 'post'
+                ,http_verb = Verb
                 ,retries = Retries
                 ,hook_event = _HookEvent
                 ,hook_id = _HookId
                 ,format = 'form-data'
-                } = Hook, EventId, JObj) ->
-    lager:debug("sending hook ~s(~s) with interaction id ~s via 'post' (retries ~b): ~s", [_HookEvent, _HookId, EventId, Retries, URI]),
+                } = Hook
+       ,EventId
+       ,JObj
+       ) when Verb =:= 'put'
+              orelse Verb =:= 'post' ->
+    lager:debug("sending hook ~s(~s) with interaction id ~s via '~s' (retries ~b): ~s", [_HookEvent, _HookId, EventId, Verb, Retries, URI]),
 
     Body = kz_http_util:json_to_querystring(JObj),
     Headers = [{"Content-Type", "application/x-www-form-urlencoded"}
                | ?HTTP_REQ_HEADERS(Hook)
               ],
     Debug = debug_req(Hook, EventId, URI, Headers, Body),
-    Fired = kz_http:post(URI, Headers, Body, ?HTTP_OPTS),
+    Fired = kz_http:req(Verb, URI, Headers, Body, ?HTTP_OPTS),
 
     handle_resp(Hook, EventId, JObj, Debug, Fired);
 do_fire(#webhook{uri = ?NE_BINARY = URI
-                ,http_verb = 'post'
+                ,http_verb = Verb
                 ,retries = Retries
                 ,hook_event = _HookEvent
                 ,hook_id = _HookId
                 ,format = 'json'
-                } = Hook, EventId, JObj) ->
-    lager:debug("sending hook ~s(~s) with interaction id ~s via 'post' (retries ~b): ~s", [_HookEvent, _HookId, EventId, Retries, URI]),
+                } = Hook
+       ,EventId
+       ,JObj
+       ) when Verb =:= 'put'
+              orelse Verb =:= 'post' ->
+    lager:debug("sending hook ~s(~s) with interaction id ~s via '~s' (retries ~b): ~s", [_HookEvent, _HookId, EventId, Verb, Retries, URI]),
 
     Body = kz_json:encode(JObj, ['pretty']),
     Headers = [{"Content-Type", "application/json"}
                | ?HTTP_REQ_HEADERS(Hook)
               ],
     Debug = debug_req(Hook, EventId, URI, Headers, Body),
-    Fired = kz_http:post(URI, Headers, Body, ?HTTP_OPTS),
+    Fired = kz_http:req(Verb, URI, Headers, Body, ?HTTP_OPTS),
 
     handle_resp(Hook, EventId, JObj, Debug, Fired).
 
@@ -257,7 +271,7 @@ handle_resp(#webhook{hook_event = _HookEvent
 handle_resp(#webhook{hook_event = _HookEvent
                     ,hook_id = _HookId
                     } = Hook, EventId, JObj, Debug, {'error', _E} = Resp) ->
-    lager:debug("failed to fire hook event ~s(~s) interaction id: ~p", [_HookEvent, _HookId, EventId, _E]),
+    lager:debug("failed to fire hook event ~s(~s) interaction id: ~p error: ~p", [_HookEvent, _HookId, EventId, _E]),
     _ = failed_hook(Hook, Debug, Resp),
     retry_hook(Hook, EventId, JObj).
 
@@ -316,7 +330,7 @@ save_attempt(AccountId, Attempt) ->
     'ok'.
 
 -spec debug_req(webhook(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:proplist(), iodata()) ->
-                       kz_term:proplist().
+          kz_term:proplist().
 debug_req(#webhook{hook_id=HookId
                   ,hook_event = HookEvent
                   ,http_verb = Method
@@ -337,7 +351,7 @@ debug_req(#webhook{hook_id=HookId
     ].
 
 -spec debug_resp(kz_http:ret(), kz_term:proplist(), hook_retries() | 'undefined') ->
-                        kz_json:object().
+          kz_json:object().
 debug_resp({'ok', RespCode, RespHeaders, RespBody}, Debug, Retries) ->
     Headers = kz_json:from_list(
                 [{fix_value(K), fix_value(V)}
@@ -628,8 +642,12 @@ init_webhook(WebHook, Year, Month) ->
 
 -spec note_failed_attempt(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 note_failed_attempt(AccountId, HookId) ->
+    note_failed_attempt(AccountId, HookId, kz_time:now_ms()).
+
+-spec note_failed_attempt(kz_term:ne_binary(), kz_term:ne_binary(), pos_integer()) -> 'ok'.
+note_failed_attempt(AccountId, HookId, TimestampMs) ->
     kz_cache:store_local(?CACHE_NAME
-                        ,?FAILURE_CACHE_KEY(AccountId, HookId, kz_time:now_s())
+                        ,?FAILURE_CACHE_KEY(AccountId, HookId, TimestampMs)
                         ,'true'
                         ,[{'expires', account_expires_time(AccountId)}]
                         ).
@@ -650,6 +668,16 @@ account_expires_time(AccountId) ->
 -spec system_expires_time() -> pos_integer().
 system_expires_time() ->
     kapps_config:get_integer(?APP_NAME, ?ATTEMPT_EXPIRY_KEY, ?MILLISECONDS_IN_MINUTE).
+
+-spec account_failure_count(kz_term:ne_binary()) -> pos_integer().
+account_failure_count(AccountId) ->
+    try kz_term:to_integer(kapps_account_config:get_global(AccountId, ?APP_NAME, ?FAILURE_COUNT_KEY, ?DEFAULT_FAILURE_COUNT))
+    catch _:_ -> ?DEFAULT_FAILURE_COUNT
+    end.
+
+-spec system_failure_count() -> pos_integer().
+system_failure_count() ->
+    kapps_config:get_integer(?APP_NAME, ?FAILURE_COUNT_KEY, ?DEFAULT_FAILURE_COUNT).
 
 -spec reenable(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 reenable(AccountId, <<"account">>) ->
@@ -777,4 +805,3 @@ fetch_available_events() ->
             kz_cache:store_local(?CACHE_NAME, ?AVAILABLE_EVENT_KEY, Events, CacheProps),
             Events
     end.
-

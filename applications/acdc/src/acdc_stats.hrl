@@ -8,6 +8,9 @@
 -define(STATS_QUERY_LIMITS_ENABLED, kapps_config:get_is_true(?CONFIG_CAT, <<"stats_query_limits_enabled">>, 'true')).
 -define(MAX_RESULT_SET, kapps_config:get_integer(?CONFIG_CAT, <<"max_result_set">>, 25)).
 
+%% Wiggle room for queries in case the AMQP message is delayed a little
+-define(QUERY_WINDOW_WIGGLE_ROOM_S, 5).
+
 -record(agent_miss, {agent_id :: kz_term:api_binary()
                     ,miss_reason :: kz_term:api_binary()
                     ,miss_timestamp = kz_time:now_s() :: pos_integer()
@@ -46,14 +49,20 @@
                          ,<<"connecting">>, <<"connected">>
                          ,<<"wrapup">>, <<"paused">>, <<"outbound">>
                          ]).
--record(status_stat, {id :: kz_term:api_binary() | '_'
-                     ,agent_id :: kz_term:api_binary() | '$2' | '_'
-                     ,account_id :: kz_term:api_binary() | '$1' | '_'
+
+%% This key optimizes lookups in the ordered_set ETS table
+-record(status_stat_key, {account_id = '_' :: kz_term:ne_binary() | '$1' | '_'
+                         ,agent_id = '_' :: kz_term:ne_binary() | '$2' | '_'
+                         ,timestamp = '_' :: pos_integer() | '$1' | '$3' | '_'
+                         }).
+-type status_stat_key() :: #status_stat_key{}.
+-record(status_stat, {key = '_' :: status_stat_key() | '_'
+                     ,id :: kz_term:api_binary() | '_'
                      ,status :: kz_term:api_binary() | '$4' | '_'
-                     ,timestamp :: kz_term:api_pos_integer() | '$1' | '$3' | '$5' | '_'
 
                      ,wait_time :: kz_term:api_integer() | '_'
-                     ,pause_time :: kz_term:api_integer() | '_'
+                     ,pause_time :: timeout() | 'undefined' | '_'
+                     ,pause_alias :: kz_term:api_binary() | '_'
                      ,callid :: kz_term:api_binary() | '_'
                      ,caller_id_name :: kz_term:api_binary() | '_'
                      ,caller_id_number :: kz_term:api_binary() | '_'
