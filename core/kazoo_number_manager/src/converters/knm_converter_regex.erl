@@ -11,6 +11,7 @@
 -export([normalize/1, normalize/2, normalize/3
         ,to_npan/1
         ,to_1npan/1
+        ,to_strip_plus/1
         ]).
 -export([get_e164_converters/0
         ,get_e164_converters/1
@@ -70,6 +71,16 @@ to_1npan(Num) ->
     case re:run(Num, <<"^(\\+?1)?([2-9][0-9]{2}[2-9][0-9]{6})$">>, [{'capture', [2], 'binary'}]) of
         'nomatch' -> Num;
         {'match', [NPAN]} -> <<$1, NPAN/binary>>
+    end.
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
+-spec to_strip_plus(kz_term:ne_binary()) -> kz_term:ne_binary().
+to_strip_plus(Number) ->
+    case normalize(Number) of
+        <<$+,N/binary>> -> N;
+        DID -> DID
     end.
 
 %%%=============================================================================
