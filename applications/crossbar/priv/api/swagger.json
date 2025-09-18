@@ -9838,6 +9838,35 @@
             ],
             "type": "object"
         },
+        "kapi.call.channel_update_req": {
+            "description": "AMQP API for call.channel_update_req",
+            "properties": {
+                "Call-ID": {
+                    "type": "string"
+                },
+                "Event-Category": {
+                    "enum": [
+                        "call_event"
+                    ],
+                    "type": "string"
+                },
+                "Event-Name": {
+                    "enum": [
+                        "channel_update_req"
+                    ],
+                    "type": "string"
+                },
+                "Updates": {
+                    "description": "object containing channel property values to update",
+                    "type": "object"
+                }
+            },
+            "required": [
+                "Call-ID",
+                "Updates"
+            ],
+            "type": "object"
+        },
         "kapi.call.event": {
             "description": "AMQP API for call.event",
             "properties": {
@@ -26225,17 +26254,27 @@
             "description": "Put the leg on hold",
             "properties": {
                 "moh_aleg": {
-                    "description": "MOH ID for the a-leg",
+                    "description": "indicator selection for the a-leg: silence, pulse, beep, beep{frequency}, tone_stream://{tones pattern}",
                     "type": "string"
                 },
                 "moh_bleg": {
-                    "description": "MOH ID for the b-leg",
+                    "description": "MOH media ID for the b-leg, or indicator selection: silence, pulse, beep, beep{frequency}, tone_stream://{tones pattern}, shout://{mp3 stream}, local_stream://{local stream}",
                     "type": "string"
+                },
+                "unhold": {
+                    "default": false,
+                    "description": "if true, an unhold action is performed (using the FS 'break' command), rather than hold",
+                    "type": "boolean"
                 },
                 "unhold_key": {
                     "default": "1",
-                    "description": "DTMF to press to unhold the call",
+                    "description": "DTMF key[s] that when pressed will unhold the call (Note: if unhold_key is used, no unhold event will be generated)",
                     "type": "string"
+                },
+                "update_channel": {
+                    "default": false,
+                    "description": "update the channel property 'is_onhold'",
+                    "type": "boolean"
                 }
             },
             "type": "object"
@@ -26626,8 +26665,8 @@
                     "description": "Capture groups?",
                     "type": "array"
                 },
-                "leg": {
-                    "description": "Which leg to be the transfer leg",
+                "moh": {
+                    "description": "MOH media ID for the b-leg, or indicator selection: silence, pulse, beep, beep{frequency}, tone_stream://{tones pattern}, shout://{mp3 stream}, local_stream://{local stream}",
                     "type": "string"
                 },
                 "target": {
@@ -31844,6 +31883,14 @@
                     "description": "ecallmgr freeswitch context",
                     "type": "string"
                 },
+                "fs_additional_events": {
+                    "default": [],
+                    "description": "a list of additional freeswitch events to bind/listen to (in addition to the defaults)",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
                 "fs_cmds": {
                     "default": [
                         {
@@ -31863,6 +31910,11 @@
                     "default": 5000,
                     "description": "ecallmgr fs cmds wait in milliseconds",
                     "type": "integer"
+                },
+                "fs_debug_events": {
+                    "default": false,
+                    "description": "log all events received from Freeswitch (warning: this will produce lots of log data)",
+                    "type": "boolean"
                 },
                 "fs_node_uptime_s": {
                     "default": 600,
