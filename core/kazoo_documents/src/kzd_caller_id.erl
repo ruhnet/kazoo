@@ -80,6 +80,10 @@ asserted_realm(Doc, Default) ->
 set_asserted_realm(Doc, AssertedRealm) ->
     kz_json:set_value([<<"asserted">>, <<"realm">>], AssertedRealm, Doc).
 
+-spec asserted_passthrough(doc(), Default) -> boolean() | Default.
+asserted_passthrough(Doc, Default) ->
+    kz_json:get_boolean_value([<<"asserted">>, <<"passthrough">>], Doc, Default).
+
 -spec emergency(doc()) -> kz_term:api_object().
 emergency(Doc) ->
     emergency(Doc, 'undefined').
@@ -115,6 +119,10 @@ emergency_number(Doc, Default) ->
 -spec set_emergency_number(doc(), binary()) -> doc().
 set_emergency_number(Doc, EmergencyNumber) ->
     kz_json:set_value([<<"emergency">>, <<"number">>], EmergencyNumber, Doc).
+
+-spec emergency_passthrough(doc(), Default) -> boolean() | Default.
+emergency_passthrough(Doc, Default) ->
+    kz_json:get_boolean_value([<<"emergency">>, <<"passthrough">>], Doc, Default).
 
 -spec external(doc()) -> kz_term:api_object().
 external(Doc) ->
@@ -152,6 +160,10 @@ external_number(Doc, Default) ->
 set_external_number(Doc, ExternalNumber) ->
     kz_json:set_value([<<"external">>, <<"number">>], ExternalNumber, Doc).
 
+-spec external_passthrough(doc(), Default) -> boolean() | Default.
+external_passthrough(Doc, Default) ->
+    kz_json:get_boolean_value([<<"external">>, <<"passthrough">>], Doc, Default).
+
 -spec internal(doc()) -> kz_term:api_object().
 internal(Doc) ->
     internal(Doc, 'undefined').
@@ -187,3 +199,7 @@ internal_number(Doc, Default) ->
 -spec set_internal_number(doc(), binary()) -> doc().
 set_internal_number(Doc, InternalNumber) ->
     kz_json:set_value([<<"internal">>, <<"number">>], InternalNumber, Doc).
+
+-spec internal_passthrough(doc(), Default) -> boolean() | Default.
+internal_passthrough(Doc, Default) ->
+    kz_json:get_boolean_value([<<"internal">>, <<"passthrough">>], Doc, Default).

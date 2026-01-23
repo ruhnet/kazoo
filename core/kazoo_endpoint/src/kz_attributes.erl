@@ -114,11 +114,26 @@ maybe_get_endpoint_cid(Validate, Attribute, Call) ->
             lager:info("unable to get endpoint: ~p", [_R]),
             maybe_normalize_cid('undefined', 'undefined', Validate, Attribute, Call);
         {'ok', JObj} ->
-            Number = get_cid_or_default(Attribute, <<"number">>, JObj),
-            Name = get_cid_or_default(Attribute, <<"name">>, JObj),
-            _ = log_configured_endpoint_cid(Attribute, Name, Number),
+            {Number, Name} = get_endpoint_cid(Attribute, JObj, Call),
             Call1 = maybe_add_originals_to_kvs(Number, Name, Call),
             maybe_use_presence_number(Number, Name, JObj, Validate, Attribute, Call1)
+    end.
+
+-spec get_endpoint_cid(kz_term:ne_binary(), kz_json:object(), kapps_call:call()) -> {kz_term:api_binary(), kz_term:api_ne_binary()}.
+get_endpoint_cid(Attribute, Endpoint, Call) ->
+    EndpointCLINumber = get_cid_or_default(Attribute, <<"number">>, Endpoint),
+    EndpointCLIName = get_cid_or_default(Attribute, <<"name">>, Endpoint),
+    _ = log_configured_endpoint_cid(Attribute, EndpointCLIName, EndpointCLINumber),
+    case kz_json:is_true([<<"caller_id">>, Attribute, <<"passthrough">>], Endpoint, 'false')
+        andalso kapps_config:get_is_true(?CONFIG_CAT, <<"allow_passthrough_caller_id">>, 'true')
+    of
+        'true' ->
+            Number = kapps_call:caller_id_number(Call),
+            Name = kapps_call:caller_id_name(Call),
+            lager:debug("endpoint configured with passthrough for ~s; using caller id: \"~s\" ~s", [Attribute, Name, Number]),
+            {Number, Name};
+        'false' ->
+            {EndpointCLINumber, EndpointCLIName}
     end.
 
 -spec maybe_add_originals_to_kvs(kz_term:api_ne_binary(), kz_term:api_ne_binary(), kapps_call:call()) -> kapps_call:call().
