@@ -128,9 +128,10 @@ get_endpoint_cid(Attribute, Endpoint, Call) ->
         andalso kapps_config:get_is_true(?CONFIG_CAT, <<"allow_passthrough_caller_id">>, 'true')
     of
         'true' ->
-            Number = kapps_call:caller_id_number(Call),
-            Name = kapps_call:caller_id_name(Call),
-            lager:debug("endpoint configured with passthrough for ~s; using caller id: \"~s\" ~s", [Attribute, Name, Number]),
+            CCVs = kapps_call:custom_channel_vars(Call),
+            Name = kz_json:get_binary_value(<<"Original-Caller-ID-Name">>, CCVs),
+            Number = kz_json:get_binary_value(<<"Original-Caller-ID-Number">>, CCVs),
+            lager:debug("endpoint configured with passthrough for ~s; using caller id: [~p] ~s", [Attribute, Name, Number]),
             {Number, Name};
         'false' ->
             {EndpointCLINumber, EndpointCLIName}

@@ -323,8 +323,9 @@ maybe_asserted_identity(Endpoint, Call, AssertedFun) ->
         andalso kapps_config:get_is_true(<<"kazoo_endpoint">>, <<"allow_passthrough_caller_id">>, 'true')
     of
         'true' ->
-            {kapps_call:caller_id_number(Call)
-            ,kapps_call:caller_id_name(Call)
+            CCVs = kapps_call:custom_channel_vars(Call),
+            {kz_json:get_binary_value(<<"Original-Caller-ID-Number">>, CCVs)
+            ,kz_json:get_binary_value(<<"Original-Caller-ID-Name">>, CCVs)
             ,kapps_call:account_realm(Call)
             };
         'false' ->
