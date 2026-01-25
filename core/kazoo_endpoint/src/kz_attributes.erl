@@ -1,8 +1,9 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2022, 2600Hz
+%%% @copyright (C) 2011-2026, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
+%%% @author Ruel Tmeizeh (www.ruhnet.co)
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(kz_attributes).
@@ -239,8 +240,12 @@ maybe_ensure_cid_valid(Number, Name, 'true', <<"emergency">>, _Call) ->
     lager:info("determined emergency caller id is <~s> ~s", [Name, Number]),
     {Number, Name};
 maybe_ensure_cid_valid(Number, Name, 'true', <<"external">>, Call) ->
-    case kapps_config:get_is_true(<<"callflow">>, <<"ensure_valid_caller_id">>, 'false') of
-        'true' -> ensure_valid_caller_id(Number, Name, Call);
+    AccountID = kapps_call:account_id(Call),
+    {'ok', AccountDoc} = kzd_accounts:fetch(AccountID),
+    case kapps_config:get_is_true(<<"callflow">>, <<"ensure_valid_caller_id">>, 'false')
+        orelse kzd_accounts:caller_id_options_ensure_valid(AccountDoc, 'false')
+    of
+        'true' -> ensure_valid_caller_id(Number, Name, Call, AccountDoc);
         'false' ->
             lager:info("determined external caller id is <~s> ~s", [Name, Number]),
             {Number, Name}
@@ -249,16 +254,79 @@ maybe_ensure_cid_valid(Number, Name, _, Attribute, _Call) ->
     lager:info("determined ~s caller id is <~s> ~s", [Attribute, Name, Number]),
     {Number, Name}.
 
--spec ensure_valid_caller_id(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) -> cid().
-ensure_valid_caller_id(Number, Name, Call) ->
+-spec ensure_valid_caller_id(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call(), kz_json:object()) -> cid().
+ensure_valid_caller_id(Number, Name, Call, AccountDoc) ->
     case is_valid_caller_id(Number, Call) of
         'true' ->
-            lager:info("determined valid external caller id is <~s> ~s", [Name, Number]),
+            case kapps_config:get_is_true(<<"callflow">>, <<"ensure_valid_caller_id_owner">>, 'false')
+                 orelse kzd_accounts:caller_id_options_ensure_valid_owner(AccountDoc, 'false')
+            of
+                'true' ->
+                    ensure_valid_caller_id_owner(Number, Name, Call);
+                'false' ->
+                    lager:info("determined valid external caller id is <~s> ~s", [Name, Number]),
+                    {Number, Name}
+            end;
+        'false' ->
+            lager:info("invalid external caller id <~s> ~s", [Name, Number]),
+            maybe_get_account_cid(Number, Name, Call)
+    end.
+
+-spec ensure_valid_caller_id_owner(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) -> cid().
+ensure_valid_caller_id_owner(Number, Name, Call) ->
+    case number_assigned_to_owner(Number, Call) of
+        'true' ->
+            lager:info("determined valid owner-assigned external caller id is <~s> ~s", [Name, Number]),
             {Number, Name};
         'false' ->
             lager:info("invalid external caller id <~s> ~s", [Name, Number]),
             maybe_get_account_cid(Number, Name, Call)
     end.
+
+-spec number_assigned_to_owner(kz_term:ne_binary(), kapps_call:call()) -> boolean().
+number_assigned_to_owner(Number, Call) ->
+    AccountId = kapps_call:account_id(Call),
+    OwnerId = kapps_call:owner_id(Call),
+    lager:debug("checking if this caller id number ~s belongs to owner ~s", [Number, OwnerId]),
+    case callflow_lookup(Number, AccountId) of
+        {'ok', NumberCallflow} ->
+            OwnerId =:= kz_json:get_ne_binary_value(<<"owner_id">>, NumberCallflow);
+        _Error -> 'false'
+    end.
+
+-spec callflow_lookup(kz_term:ne_binary(), kz_term:ne_binary()) -> {'ok', kzd_callflow:doc(), boolean()} | {'error', any()}.
+callflow_lookup(Number, AccountId) ->
+    case kz_cache:fetch_local(?CALLFLOW_CACHE_NAME, {'cf_flow', Number, AccountId}) of
+        {'ok', FlowId} -> kzd_callflows:fetch(AccountId, FlowId);
+        {'error', 'not_found'} -> callflow_number_db_lookup(Number, AccountId)
+    end.
+
+-spec callflow_number_db_lookup(kz_term:ne_binary(), kz_term:ne_binary()) -> {'ok', kzd_callflow:doc(), boolean()} | {'error', any()}.
+callflow_number_db_lookup(Number, AccountId) ->
+    Db = kz_util:format_account_db(AccountId),
+    lager:debug("searching for callflow in ~s to match '~s' with owner", [Db, Number]),
+    Options = [{'key', Number}, 'include_docs'],
+    case kz_datamgr:get_results(Db, <<"callflows/listing_by_number">>, Options) of
+        {'error', _}=E -> E;
+        {'ok', []} -> {'error', 'not_found'};
+        {'ok', [JObj]} ->
+            Flow = kz_json:get_value(<<"doc">>, JObj),
+            cache_callflow_number(Number, AccountId, Flow);
+        {'ok', [JObj | _Rest]} ->
+            lager:debug("lookup resulted in more than one result, using the first"),
+            Flow = kz_json:get_value(<<"doc">>, JObj),
+            cache_callflow_number(Number, AccountId, Flow)
+    end.
+
+-spec cache_callflow_number(kz_term:ne_binary(), kz_term:ne_binary(), kzd_callflow:doc()) ->
+    {'ok', kzd_callflow:doc(), boolean()} | {'error', any()}.
+cache_callflow_number(Number, AccountId, Flow) ->
+    AccountDb = kz_util:format_account_db(AccountId),
+    CacheOptions = [{'origin', [{'db', AccountDb, <<"callflow">>}]}
+                   ,{'expires', ?MILLISECONDS_IN_HOUR}
+                   ],
+    kz_cache:store_local(?CALLFLOW_CACHE_NAME, {'cf_flow', Number, AccountId}, kz_doc:id(Flow), CacheOptions),
+    {'ok', Flow}.
 
 -spec get_account_external_cid(kapps_call:call()) -> cid().
 get_account_external_cid(Call) ->

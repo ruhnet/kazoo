@@ -26,6 +26,8 @@ Key | Description | Type | Default | Required | Support Level
 `call_restriction` | Account level call restrictions for each available number classification | `object()` | `{}` | `false` |  
 `call_waiting` | Parameters for server-side call waiting | [#/definitions/call_waiting](#call_waiting) |   | `false` |  
 `caller_id` | The account default caller ID parameters | [#/definitions/caller_id](#caller_id) |   | `false` |  
+`caller_id_options.ensure_valid` | Ensure caller id is valid (must match a DID on the account) | `boolean()` |   | `false` |  
+`caller_id_options.ensure_valid_owner` | Ensure caller id is valid (must match a DID assigned to the user) - this setting depends on 'ensure_valid' | `boolean()` |   | `false` |  
 `caller_id_options.outbound_privacy` | Determines what appears as caller id for offnet outbound calls. Values: full - hides name and number; name - hides only name; number - hides only number; none - hides nothing | `string('full' | 'name' | 'number' | 'none')` |   | `false` |  
 `caller_id_options.show_rate` | Whether to show the rate | `boolean()` |   | `false` |  
 `caller_id_options` | custom properties for configuring caller_id | `object()` |   | `false` |  
