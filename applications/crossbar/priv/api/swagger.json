@@ -497,7 +497,7 @@
                             "type": "boolean"
                         },
                         "ensure_valid_owner": {
-                            "description": "Ensure caller id is valid (must match a DID assigned to the user) - this setting depends on 'ensure_valid'",
+                            "description": "Ensure caller id is valid (must match a DID assigned to the user)",
                             "type": "boolean"
                         },
                         "outbound_privacy": {
@@ -509,6 +509,14 @@
                                 "none"
                             ],
                             "type": "string"
+                        },
+                        "passthrough_ensure_valid": {
+                            "description": "Ensure passthrough caller id is valid (must match a DID on the account)",
+                            "type": "boolean"
+                        },
+                        "passthrough_ensure_valid_owner": {
+                            "description": "Ensure passthrough caller id is valid (must match a DID assigned to the user)",
+                            "type": "boolean"
                         },
                         "show_rate": {
                             "description": "Whether to show the rate",
@@ -30937,12 +30945,22 @@
                 },
                 "ensure_valid_caller_id": {
                     "default": false,
-                    "description": "callflow ensure valid caller id",
+                    "description": "Ensure caller id is valid (must match a DID on the account)",
                     "type": "boolean"
                 },
                 "ensure_valid_caller_id_owner": {
                     "default": false,
-                    "description": "callflow ensure_valid_caller_id_owner",
+                    "description": "Ensure caller id is valid (must match a DID assigned to the user)",
+                    "type": "boolean"
+                },
+                "ensure_valid_passthrough_caller_id": {
+                    "default": false,
+                    "description": "Ensure passthrough caller id is valid (must match a DID on the account)",
+                    "type": "boolean"
+                },
+                "ensure_valid_passthrough_caller_id_owner": {
+                    "default": false,
+                    "description": "Ensure passthrough caller id is valid (must match a DID assigned to the user)",
                     "type": "boolean"
                 },
                 "fax_detect_duration_s": {
