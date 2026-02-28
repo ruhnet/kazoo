@@ -62,6 +62,7 @@
 
         ,api_key/1, set_api_key/2
         ,is_enabled/1, enable/1, disable/1
+	,is_ledger_rollover_enabled/1, set_ledger_rollover_enabled/2, unset_ledger_rollover_enabled/1
         ,path_enabled/0
         ,is_expired/1
 
@@ -823,6 +824,34 @@ enable(JObj) ->
 -spec disable(doc()) -> doc().
 disable(JObj) ->
     kz_json:set_value([<<"pvt_enabled">>], 'false', JObj).
+
+-spec is_ledger_rollover_enabled(doc() | kz_term:api_ne_binary()) -> boolean().
+is_ledger_rollover_enabled('undefined') -> 'undefined';
+is_ledger_rollover_enabled(?NE_BINARY = Id) ->
+    case fetch(Id) of
+        {'ok', JObj} -> is_ledger_rollover_enabled(JObj);
+        {'error', _} -> 'false'
+    end;
+is_ledger_rollover_enabled(JObj) ->
+    kz_json:get_value([<<"pvt_ledger_rollover_enabled">>], JObj).
+
+-spec set_ledger_rollover_enabled(doc() | kz_term:api_ne_binary(), boolean()) -> doc().
+set_ledger_rollover_enabled(?NE_BINARY = Id, Enabled) ->
+    case fetch(Id) of
+        {'ok', JObj} -> set_ledger_rollover_enabled(JObj, Enabled);
+        {'error', _} -> 'false'
+    end;
+set_ledger_rollover_enabled(JObj, Enabled) ->
+    kz_json:set_value([<<"pvt_ledger_rollover_enabled">>], Enabled, JObj).
+
+-spec unset_ledger_rollover_enabled(doc() | kz_term:api_ne_binary()) -> doc().
+unset_ledger_rollover_enabled(?NE_BINARY = Id) ->
+    case fetch(Id) of
+        {'ok', JObj} -> unset_ledger_rollover_enabled(JObj);
+        {'error', _} -> 'false'
+    end;
+unset_ledger_rollover_enabled(JObj) ->
+    kz_json:set_value([<<"pvt_ledger_rollover_enabled">>], 'undefined', JObj).
 
 -spec path_enabled() -> kz_json:path().
 path_enabled() ->

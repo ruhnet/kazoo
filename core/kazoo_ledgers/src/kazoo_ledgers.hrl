@@ -9,6 +9,8 @@
 -define(LIST_BY_SOURCE, <<"ledgers/list_by_source">>).
 -define(TOTAL_BY_SOURCE, <<"ledgers/total_by_source">>).
 
+-define(TOTAL_BY_OWNER, <<"ledgers/total_by_owner">>).
+
 -define(CONFIG_CAT, <<"ledgers">>).
 
 -define(KAZOO_LEDGERS_HRL, 'true').

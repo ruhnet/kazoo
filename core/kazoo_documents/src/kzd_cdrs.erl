@@ -9,6 +9,8 @@
 -export([app_name/1, app_name/2, set_app_name/2]).
 -export([app_version/1, app_version/2, set_app_version/2]).
 -export([billing_seconds/1, billing_seconds/2, set_billing_seconds/2]).
+-export([billing_cost/1, billing_cost/2, set_billing_cost/2]).
+-export([billing_reseller_cost/1, billing_reseller_cost/2, set_billing_reseller_cost/2]).
 -export([call_direction/1, call_direction/2, set_call_direction/2]).
 -export([call_id/1, call_id/2, set_call_id/2]).
 -export([callee_id_name/1, callee_id_name/2, set_callee_id_name/2]).
@@ -118,6 +120,30 @@ billing_seconds(Doc, Default) ->
 -spec set_billing_seconds(doc(), integer()) -> doc().
 set_billing_seconds(Doc, BillingSeconds) ->
     kz_json:set_value([<<"billing_seconds">>], BillingSeconds, Doc).
+
+-spec billing_cost(doc()) -> kz_term:api_integer().
+billing_cost(Doc) ->
+    billing_cost(Doc, 'undefined').
+
+-spec billing_cost(doc(), Default) -> integer() | Default.
+billing_cost(Doc, Default) ->
+    kz_json:get_integer_value([<<"billing_cost">>], Doc, Default).
+
+-spec set_billing_cost(doc(), integer()) -> doc().
+set_billing_cost(Doc, BillingCost) ->
+    kz_json:set_value([<<"billing_cost">>], BillingCost, Doc).
+
+-spec billing_reseller_cost(doc()) -> kz_term:api_integer().
+billing_reseller_cost(Doc) ->
+    billing_reseller_cost(Doc, 'undefined').
+
+-spec billing_reseller_cost(doc(), Default) -> integer() | Default.
+billing_reseller_cost(Doc, Default) ->
+    kz_json:get_integer_value([<<"billing_reseller_cost">>], Doc, Default).
+
+-spec set_billing_reseller_cost(doc(), integer()) -> doc().
+set_billing_reseller_cost(Doc, BillingResellerCost) ->
+    kz_json:set_value([<<"billing_reseller_cost">>], BillingResellerCost, Doc).
 
 -spec call_direction(doc()) -> kz_term:api_binary().
 call_direction(Doc) ->

@@ -124,6 +124,19 @@
                 "}"
             ],
             "reduce": "_sum"
+        },
+        "total_by_owner": {
+            "map": [
+                "function(doc) {",
+                "  if (doc.pvt_deleted || doc.pvt_type !== 'ledger' || doc.metadata.owner_id == null)",
+                "    return;",
+                "  var amount = doc.amount || 0;",
+                "  if (doc.pvt_ledger_type === 'debit')",
+                "    amount *= -1;",
+                "  emit([doc.metadata.owner_id, doc.pvt_created], amount);",
+                "}"
+            ],
+            "reduce": "_sum"
         }
     }
 }

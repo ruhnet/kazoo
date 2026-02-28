@@ -6,6 +6,7 @@
 -module(kzd_users).
 
 -export([new/0]).
+-export([account_id/1]).
 -export([call_forward/1, call_forward/2, set_call_forward/2]).
 -export([call_forward_direct_calls_only/1, call_forward_direct_calls_only/2, set_call_forward_direct_calls_only/2]).
 -export([call_forward_enabled/1, call_forward_enabled/2, set_call_forward_enabled/2]).
@@ -55,6 +56,10 @@
 -export([ringtones_internal/1, ringtones_internal/2, set_ringtones_internal/2]).
 -export([timezone/1, timezone/2, set_timezone/2]).
 -export([username/1, username/2, set_username/2]).
+-export([userpay/1, userpay/2, set_userpay/2]).
+-export([userpay_enabled/1, userpay_enabled/2, set_userpay_enabled/2]).
+-export([userpay_limit/1, userpay_limit/2, set_userpay_limit/2]).
+-export([limits/1, limits/2, set_limits/2, fetch_limits/2]).
 -export([verified/1, verified/2, set_verified/2]).
 -export([vm_to_email_enabled/1, vm_to_email_enabled/2, set_vm_to_email_enabled/2]).
 -export([voicemail/1, voicemail/2, set_voicemail/2]).
@@ -99,7 +104,11 @@
 new() ->
     kz_doc:set_type(kz_json_schema:default_object(?SCHEMA), type()).
 
--spec call_forward(doc()) -> kz_term:api_object().
+-spec account_id(doc()) -> kz_term:api_binary().
+account_id(Doc) ->
+    kz_json:get_json_value([<<"pvt_account_id">>], Doc).
+
+-spec call_forward(doc()) -> kz_term:api_binary().
 call_forward(Doc) ->
     call_forward(Doc, 'undefined').
 
@@ -695,6 +704,62 @@ username(Doc, Default) ->
 -spec set_username(doc(), kz_term:ne_binary()) -> doc().
 set_username(Doc, Username) ->
     kz_json:set_value([<<"username">>], Username, Doc).
+
+-spec userpay(doc()) -> kz_term:api_object().
+userpay(Doc) ->
+    userpay(Doc, kz_json:new()).
+
+-spec userpay(doc(), Default) -> kz_json:object() | Default.
+userpay(Doc, Default) ->
+    kz_json:get_json_value([<<"userpay">>], Doc, Default).
+
+-spec set_userpay(doc(), kz_json:object()) -> doc().
+set_userpay(Doc, UserPay) ->
+    kz_json:set_value([<<"userpay">>], UserPay, Doc).
+
+-spec userpay_enabled(doc()) -> kz_term:api_boolean().
+userpay_enabled(Doc) -> userpay_enabled(Doc, false).
+
+-spec userpay_enabled(doc(), boolean()) -> kz_term:api_boolean().
+userpay_enabled(Doc, Default) ->
+    kz_json:get_boolean_value([<<"userpay">>, <<"enabled">>], Doc, Default).
+
+-spec set_userpay_enabled(doc(), boolean()) -> doc().
+    set_userpay_enabled(Doc, UserPayEnabled) ->
+        kz_json:set_value([<<"userpay">>, <<"enabled">>], UserPayEnabled, Doc).
+
+-spec userpay_limit(doc()) -> kz_currency:units().
+userpay_limit(Doc) -> userpay_limit(Doc, 0).
+
+-spec userpay_limit(doc(), kz_currency:units()) -> kz_currency:units().
+userpay_limit(Doc, Default) ->
+    case kz_json:get_value([<<"userpay">>, <<"limit">>], Doc, Default) of
+        Value when is_float(Value) -> kz_currency:dollars_to_units(abs(Value));
+        Value when is_integer(Value) -> abs(Value)
+    end.
+
+-spec set_userpay_limit(doc(), kz_currency:units()) -> doc().
+    set_userpay_limit(Doc, UserPayLimit) ->
+        kz_json:set_value([<<"userpay">>, <<"limit">>], UserPayLimit, Doc).
+
+-spec limits(doc()) -> kz_term:api_object().
+limits(Doc) ->
+    limits(Doc, kz_json:new()).
+
+-spec limits(doc(), Default) -> kz_json:object() | Default.
+limits(Doc, Default) ->
+    kz_json:get_json_value([<<"limits">>], Doc, Default).
+
+-spec set_limits(doc(), kz_json:object()) -> doc().
+set_limits(Doc, Limits) ->
+    kz_json:set_value([<<"limits">>], Limits, Doc).
+
+-spec fetch_limits(kz_term:api_ne_binary(), kz_term:api_ne_binary()) -> kz_json:object().
+fetch_limits(AccountId, UserId) ->
+    case fetch(AccountId, UserId) of
+          {'ok', CurrentDoc} -> limits(CurrentDoc);
+          {'error', _R} -> 'undefined'
+    end.
 
 -spec verified(doc()) -> boolean().
 verified(Doc) ->

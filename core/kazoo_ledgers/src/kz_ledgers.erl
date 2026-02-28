@@ -9,6 +9,9 @@
 -export([total_sources/1
         ,total_sources/3
         ]).
+-export([total_owners/2
+        ,total_owners/4
+        ]).
 -export([total_sources_from_previous/1]).
 -export([list_source/2
         ,list_source/4
@@ -26,7 +29,7 @@
         ,rollover/4
         ]).
 -export([sum_amount/1]).
-
+-export([should_rollover_monthly_balance/0, should_rollover_monthly_balance/1]).
 -include("kazoo_ledgers.hrl").
 
 -define(DEFAULT_AVIALABLE_LEDGERS,
@@ -335,7 +338,7 @@ maybe_migrate_legacy_rollover(Account, Options) ->
     %%  if the MODb was created during a period where transactions
     %%  where used to track balance (and transactions were rolled over)
     %%  create the ledger rollover from the transaction balance
-    case should_rollover_monthly_balance() of
+    case should_rollover_monthly_balance(Account) of
         'true' -> migrate_legacy_rollover(Account, Options, Year, Month);
         'false' ->
             lager:debug("monthly balance rollover is disabled, assuming previous balance was 0", []),
@@ -380,7 +383,7 @@ rollover(Account) ->
 rollover(Account, Year, Month) ->
     MODB = kz_util:format_account_id(Account, Year, Month),
 
-    case should_rollover_monthly_balance() of
+    case should_rollover_monthly_balance(Account) of
         'true' ->
             rollover_past_available_units(MODB, Year, Month);
         'false' ->
@@ -481,4 +484,103 @@ sum_amount(Ledger, Sum) ->
 %%------------------------------------------------------------------------------
 -spec should_rollover_monthly_balance() -> boolean().
 should_rollover_monthly_balance() ->
-    kapps_config:get_is_true(?CONFIG_CAT, <<"rollover_monthly_balance">>, 'true').
+    RollOver = kapps_config:get_is_true(?CONFIG_CAT, <<"rollover_monthly_balance">>, 'true'),
+    lager:debug("should rollover for system [~p]", [RollOver]),
+    RollOver.
+
+-spec should_rollover_monthly_balance(kz_term:ne_binary()) -> boolean().
+should_rollover_monthly_balance(Account) ->
+    lager:debug("should rollover for account ~p", [Account]),
+    case kzd_accounts:is_ledger_rollover_enabled(Account) of
+	'undefined' -> should_rollover_monthly_balance();
+	IsEnabled -> 
+	    lager:debug("should rollover for account ~p [~p]", [Account, IsEnabled]),
+	    IsEnabled
+    end. 
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
+-spec total_owners(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_currency:available_units_return().
+total_owners(Account, Owner) ->
+    total_owners(Account, Owner, []).
+
+-spec total_owners(kz_term:ne_binary(), kz_term:ne_binary(), kz_time:year(), kz_time:month()) ->
+          kz_currency:available_units_return().
+total_owners(Account, Owner, Year, Month) ->
+    Options = [{'year', Year}
+              ,{'month', Month}
+              ],
+    total_owners(Account, Owner, Options).
+
+-spec total_owners(kz_term:ne_binary(), kz_term:ne_binary(), kazoo_modb:view_options()) ->
+          kz_currency:available_units_return().
+total_owners(Account, Owner, Options) ->
+    case get_owners_total(Account, Owner, Options) of
+        {'ok', Total} -> {'ok', Total};
+        {'error', _Reason} = Error ->
+            Error
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Fetch total units for the MODB
+%%
+%% On an un-indexed MODB with 12,000 documents (381 of which are ledger docs)
+%% it took about 6s to index and return the view results. On the same database
+%% after indexing, 70ms.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_owners_total(kz_term:ne_binary(), kz_term:ne_binary(), kazoo_modb:view_options()) ->
+          kz_currency:available_units_return().
+get_owners_total(Account, Owner, Options) ->
+    View = ?TOTAL_BY_OWNER,
+    ViewOptions = ['reduce'
+                  ,{'startkey', [Owner]}
+                  ,{'endkey', [Owner, kz_json:new()]}
+                  ,{'group_level', 1}
+                  ,'missing_as_error'
+                   | Options
+                  ],
+    case kazoo_modb:get_results(Account, View, ViewOptions) of
+        {'ok', []} ->
+            lager:info("missing ledgers from ~s: ~p/~p"
+                      ,[Account, props:get_value('year', ViewOptions), props:get_value('month', ViewOptions)]
+                      ),
+            {'error', 'missing_ledgers'};
+        {'ok', JObjs} ->
+            sum_owners(JObjs);
+        {'error', 'db_not_found'}=Error ->
+            lager:info("unable to get balance for ~s, database does not exist", [Account]),
+            Error;
+        {'error', _Reason} = Error ->
+            {DefaultYear, DefaultMonth, _} = erlang:date(),
+            Year = props:get_value('year', Options, DefaultYear),
+            Month = props:get_value('month', Options, DefaultMonth),
+            lager:warning("unable to get balance for ~s ~p-~p: ~p"
+                         ,[Account, Year, Month, _Reason]
+                         ),
+            Error
+    end.
+
+-spec sum_owners(kz_json:objects()) -> kz_currency:available_units_return().
+sum_owners(JObjs) ->
+    case lists:foldl(fun sum_owners_foldl/2, {'true', 0}, JObjs) of
+        {'false', _Total} ->
+            lager:info("failed to sum sources"),
+            {'error', 'missing_rollover'};
+        {'true', Total} -> {'ok', Total}
+    end.
+
+-spec sum_owners_foldl(kz_json:object(), {boolean(), kz_currency:units()}) ->
+          {boolean(), kz_currency:units()}.
+sum_owners_foldl(JObj, {FoundRollover, Sum}) ->
+    Value = kz_json:get_integer_value(<<"value">>, JObj, 0),
+    case kz_json:get_value(<<"key">>, JObj) of
+        [<<"rollovers">>] ->
+            {'true', Sum + Value};
+        _Else ->
+            {FoundRollover, Sum + Value}
+    end.
+
+
