@@ -29,7 +29,7 @@
 
 -spec name_mapping() -> kz_term:proplist().
 name_mapping() ->
-    [{<<"call_priority">>, <<"Call-Priority">>}].
+    [{<<"call_priority">>, <<"Call-Priority">>}, {<<"resource_type">>, <<"Resource-Type">>}].
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module
