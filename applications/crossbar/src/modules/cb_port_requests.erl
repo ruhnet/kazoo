@@ -48,6 +48,7 @@
 -define(ALL_PORT_REQ_NUMBERS, <<"port_requests/all_port_in_numbers">>).
 -define(LISTING_BY_STATE, <<"port_requests/listing_by_state">>).
 -define(LISTING_BY_NUMBER, <<"port_requests/listing_by_number">>).
+-define(LISTING_BY_REFERENCE_NUMBER, <<"port_requests/listing_by_reference_number">>).
 -define(DESCENDANT_LISTING_BY_STATE, <<"port_requests/listing_by_descendant_state">>).
 -define(AGENT_LISTING_BY_STATE, <<"port_requests/agent_listing_by_state">>).
 
@@ -56,6 +57,7 @@
 -define(PATH_TOKEN_LOA, <<"loa">>).
 -define(PATH_TOKEN_TIMELINE, <<"timeline">>).
 -define(PATH_TOKEN_LAST_SUBMITTED, <<"last_submitted">>).
+-define(PATH_TOKEN_PENDING_TRANSITIONS, <<"pending_transitions">>).
 
 -define(REQ_TRANSITION, <<"reason">>).
 
@@ -126,10 +128,16 @@ allowed_methods() ->
 -spec allowed_methods(path_token()) -> http_methods().
 allowed_methods(?PATH_TOKEN_LAST_SUBMITTED) ->
     [?HTTP_GET];
+allowed_methods(?PATH_TOKEN_PENDING_TRANSITIONS) ->
+    [?HTTP_GET];
 allowed_methods(_PortRequestId) ->
     [?HTTP_GET, ?HTTP_POST, ?HTTP_PATCH, ?HTTP_DELETE].
 
 -spec allowed_methods(path_token(), path_token()) -> http_methods().
+allowed_methods(_PortRequestId, ?PORT_STAGED) ->
+    [?HTTP_PATCH];
+allowed_methods(_PortRequestId, ?PORT_CONFIRMED) ->
+    [?HTTP_PATCH];
 allowed_methods(_PortRequestId, ?PORT_SUBMITTED) ->
     [?HTTP_PATCH];
 allowed_methods(_PortRequestId, ?PORT_PENDING) ->
@@ -171,6 +179,8 @@ resource_exists() -> 'true'.
 resource_exists(_PortRequestId) -> 'true'.
 
 -spec resource_exists(path_token(), path_token()) -> 'true'.
+resource_exists(_PortRequestId, ?PORT_STAGED) -> 'true';
+resource_exists(_PortRequestId, ?PORT_CONFIRMED) -> 'true';
 resource_exists(_PortRequestId, ?PORT_SUBMITTED) -> 'true';
 resource_exists(_PortRequestId, ?PORT_PENDING) -> 'true';
 resource_exists(_PortRequestId, ?PORT_SCHEDULED) -> 'true';
@@ -275,6 +285,9 @@ validate(Context, Id) ->
 validate_port_request(Context, ?PATH_TOKEN_LAST_SUBMITTED, ?HTTP_GET) ->
     C1 = cb_context:set_req_data(Context, kz_json:from_list([{<<"by_types">>, ?PATH_TOKEN_LAST_SUBMITTED}])),
     summary(set_port_authority(C1));
+validate_port_request(Context, ?PATH_TOKEN_PENDING_TRANSITIONS, ?HTTP_GET) ->
+    C1 = cb_context:set_req_data(Context, kz_json:from_list([{<<"by_types">>, ?PATH_TOKEN_PENDING_TRANSITIONS}])),
+    summary(set_port_authority(C1));
 validate_port_request(Context, Id, ?HTTP_GET) ->
     read(Context, Id);
 validate_port_request(Context, Id, ?HTTP_POST) ->
@@ -290,6 +303,10 @@ validate_port_request(Context, Id, ?HTTP_DELETE) ->
 
 -spec validate(cb_context:context(), path_token(), path_token()) ->
           cb_context:context().
+validate(Context, Id, ToState=?PORT_STAGED) ->
+    patch_then_validate_then_maybe_transition(Context, Id, ToState);
+validate(Context, Id, ToState=?PORT_CONFIRMED) ->
+    patch_then_validate_then_maybe_transition(Context, Id, ToState);
 validate(Context, Id, ToState=?PORT_SUBMITTED) ->
     patch_then_validate_then_maybe_transition(Context, Id, ToState);
 validate(Context, Id, ToState=?PORT_PENDING) ->
@@ -380,6 +397,10 @@ patch(Context, Id) ->
     post(Context, Id).
 
 -spec patch(cb_context:context(), path_token(), path_token()) -> cb_context:context().
+patch(Context, Id, NewState=?PORT_STAGED) ->
+    save_then_maybe_notify(Context, Id, NewState);
+patch(Context, Id, NewState=?PORT_CONFIRMED) ->
+    save_then_maybe_notify(Context, Id, NewState);
 patch(Context, Id, NewState=?PORT_SUBMITTED) ->
     case phonebook:maybe_create_port_in(Context) of
         {'ok', 'disabled'} ->
@@ -824,6 +845,7 @@ is_deletable(Context) ->
 
 -spec is_deletable(cb_context:context(), kz_term:ne_binary()) -> cb_context:context().
 is_deletable(Context, ?PORT_UNCONFIRMED) -> Context;
+is_deletable(Context, ?PORT_CONFIRMED) -> Context;
 is_deletable(Context, ?PORT_REJECTED) -> Context;
 is_deletable(Context, ?PORT_CANCELED) -> Context;
 is_deletable(Context, _PortState) ->
@@ -879,9 +901,16 @@ update(Context, Id) ->
 -spec summary(cb_context:context()) -> cb_context:context().
 summary(Context) ->
     case cb_context:req_value(Context, <<"by_number">>) of
-        'undefined' -> summarize_by_types(Context);
+        'undefined' -> summarize_by_reference(Context);
         Number -> load_summary_by_number(Context, Number)
     end.
+
+-spec summarize_by_reference(cb_context:context()) -> cb_context:context().
+    summarize_by_reference(Context) ->
+        case cb_context:req_value(Context, <<"by_reference">>) of
+            'undefined' -> summarize_by_types(Context);
+            Reference -> load_summary_by_reference(Context, Reference)
+        end.
 
 %%%=============================================================================
 %%% Summary by Types functions
@@ -901,6 +930,7 @@ summarize_by_types(Context) ->
         <<"suspended">> -> load_summary_by_types(Context, ?PORT_SUSPENDED_STATES);
         <<"completed">> -> load_summary_by_types(Context, ?PORT_COMPLETED_STATES);
         ?PATH_TOKEN_LAST_SUBMITTED -> last_submitted(Context);
+        ?PATH_TOKEN_PENDING_TRANSITIONS -> pending_transitions(Context);
         Types -> summarize_by_types(Context, Types)
     end.
 
@@ -1034,6 +1064,16 @@ get_account_names(Keys) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
+-spec load_summary_by_reference(cb_context:context(), kz_term:ne_binary()) -> cb_context:context().
+load_summary_by_reference(Context, Reference) ->
+    Options = [{'keymap', Reference}
+              ,{'mapper', fun normalize_number_summarize_results/3}
+              ,{'databases', [?KZ_PORT_REQUESTS_DB]}
+              ,'include_docs'
+              ],
+    crossbar_view:load(Context, ?LISTING_BY_REFERENCE_NUMBER, Options).
+
+
 -spec load_summary_by_number(cb_context:context(), kz_term:ne_binary()) -> cb_context:context().
 load_summary_by_number(Context, Number) ->
     Options = [{'keymap', knm_converters:normalize(Number)}
@@ -1095,6 +1135,54 @@ transitions_to_submitted(Timeline) ->
     [JObj || JObj <- Timeline,
              kz_json:get_ne_binary_value([?PORT_TRANSITION, <<"new">>], JObj) =:= ?PORT_SUBMITTED
     ].
+
+-spec pending_transitions(cb_context:context()) -> cb_context:context().
+pending_transitions(Context) ->
+    AccountId = cb_context:account_id(Context),
+    Options = [{'startkey', [AccountId, <<"pending">>]}
+              ,{'endkey', [AccountId, <<"pending">>, kz_json:new()]}
+              ,{'mapper', fun  normalize_pending_transitions/3}
+              ,{'databases', [?KZ_PORT_REQUESTS_DB]}
+              ,'include_docs'
+              ],
+    crossbar_view:load(Context, <<"port_requests/listing_by_transition">>, Options).
+
+-spec normalize_pending_transitions(cb_context:context(), kz_json:object(), kz_json:objects()) -> kz_json:objects().
+normalize_pending_transitions(Context, ResultJObj, Acc) ->
+    Doc = kz_json:get_value(<<"doc">>, ResultJObj),
+    Timeline = prepare_timeline(Context, Doc),
+    TranistionFrom = cb_context:req_value(Context, <<"transition_from">>),
+    TranistionTo = cb_context:req_value(Context, <<"transition_to">>),
+    case lists:reverse(transitions_to_pending(Timeline)) of
+        [] -> Acc;
+        [PendingTransition|_] ->
+            case should_include_transition(PendingTransition, TranistionFrom, TranistionTo) of
+                true ->
+                    JObj = kz_json:from_list(
+                             [{<<"id">>, kz_doc:id(Doc)}
+                             ,{<<"transition">>, PendingTransition}
+                             ]),
+                    [JObj|Acc];
+                false -> Acc
+            end
+    end.
+
+-spec should_include_transition(kz_json:object(), kz_term:ne_binary(), kz_term:ne_binary()) -> boolean().
+should_include_transition(_, undefined, undefined) -> 'true';
+should_include_transition(Transition, TransitionFrom, undefined) ->
+    kz_json:get_integer_value(?TRANSITION_TIMESTAMP, Transition) >= kz_term:to_number(TransitionFrom);
+should_include_transition(Transition, undefined, TransitionTo) ->
+    kz_json:get_integer_value(?TRANSITION_TIMESTAMP, Transition) =< kz_term:to_number(TransitionTo);
+should_include_transition(Transition, TransitionFrom, TransitionTo) ->
+    (kz_json:get_integer_value(?TRANSITION_TIMESTAMP, Transition) =< kz_term:to_number(TransitionTo)
+    andalso kz_json:get_integer_value(?TRANSITION_TIMESTAMP, Transition) >= kz_term:to_number(TransitionFrom)).
+
+-spec transitions_to_pending(kz_json:objects()) -> kz_json:objects().
+transitions_to_pending(Timeline) ->
+    [JObj || JObj <- Timeline,
+             kz_json:get_ne_binary_value([?PORT_TRANSITION, <<"new">>], JObj) =:= ?PORT_PENDING
+    ].
+
 
 -spec prepare_timeline(cb_context:context(), kz_json:object()) -> kz_json:objects().
 prepare_timeline(Context, Doc) ->
@@ -1222,6 +1310,9 @@ can_update_port_request(Context) ->
 -spec can_update_port_request(cb_context:context(), kz_term:ne_binary()) -> boolean().
 can_update_port_request(_Context, ?PORT_UNCONFIRMED) ->
     lager:debug("port is in unconfirmed state, allowing update"),
+    'true';
+can_update_port_request(_Context, ?PORT_CONFIRMED) ->
+    lager:debug("port is in confirmed state, allowing update"),
     'true';
 can_update_port_request(_Context, ?PORT_REJECTED) ->
     lager:debug("port is in rejected state, allowing update"),
@@ -1452,7 +1543,7 @@ port_state_change_notify(Context, Id, State) ->
              | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
             ]),
     try
-        lager:debug("sending port ~s notification for port request ~s", [State, Id]),
+        lager:debug("sending port ~s notification for port request ~s [~p]", [State, Id, Req]),
         kapps_notify_publisher:cast(Req, state_change_notify_fun(State)),
         Context
     catch
@@ -1464,6 +1555,10 @@ port_state_change_notify(Context, Id, State) ->
     end.
 
 -spec state_change_notify_fun(kz_term:ne_binary()) -> function().
+state_change_notify_fun(?PORT_STAGED) ->
+    fun kapi_notifications:publish_port_staged/1;
+state_change_notify_fun(?PORT_CONFIRMED) ->
+    fun kapi_notifications:publish_port_confirmed/1;
 state_change_notify_fun(?PORT_SUBMITTED) ->
     fun kapi_notifications:publish_port_request/1;
 state_change_notify_fun(?PORT_PENDING) ->

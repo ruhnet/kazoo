@@ -42,6 +42,7 @@
         ,port_request/1, port_request_v/1
         ,port_scheduled/1, port_scheduled_v/1
         ,port_unconfirmed/1, port_unconfirmed_v/1
+        ,port_confirmed/1, port_confirmed_v/1
         ,ported/1, ported_v/1
 
          %% Register notifications
@@ -52,6 +53,7 @@
         ,first_occurrence/1, first_occurrence_v/1
         ,missed_call/1, missed_call_v/1
         ,register/1, register_v/1
+        ,offline_call/1, offline_call_v/1
 
          %% System notifications
         ,system_alert/1, system_alert_v/1
@@ -106,6 +108,7 @@
         ,publish_port_request/1, publish_port_request/2
         ,publish_port_scheduled/1, publish_port_scheduled/2
         ,publish_port_unconfirmed/1, publish_port_unconfirmed/2
+        ,publish_port_confirmed/1, publish_port_confirmed/2
         ,publish_ported/1, publish_ported/2
 
          %% Register notifications
@@ -117,6 +120,8 @@
         ,publish_first_occurrence/1, publish_first_occurrence/2
         ,publish_missed_call/1, publish_missed_call/2
         ,publish_register/1, publish_register/2
+        ,publish_offline_call/1, publish_offline_call/2
+
 
          %% System notifications
         ,publish_system_alert/1, publish_system_alert/2
@@ -759,6 +764,27 @@ port_scheduled_definition() ->
 %% @doc Get Port Unconfirmed Notification API definition.
 %% @end
 %%------------------------------------------------------------------------------
+-spec port_confirmed_definition() -> kapi_definition:api().
+port_confirmed_definition() ->
+    #kapi_definition{name = <<"port_confirmed">>
+                    ,friendly_name = <<"Port Confirmed">>
+                    ,description = <<"This event is triggered when a port request is confirmed">>
+                    ,build_fun = fun port_confirmed/1
+                    ,validate_fun = fun port_confirmed_v/1
+                    ,publish_fun = fun publish_port_confirmed/1
+                    ,binding = ?BINDING_STRING(<<"number">>, <<"port_confirmed">>)
+                    ,restrict_to = 'port_confirmed'
+                    ,required_headers = [<<"Account-ID">>
+                                        ,<<"Port-Request-ID">>
+                                        ]
+                    ,optional_headers = ?PORT_OPTIONAL_HEADERS
+                    ,values = ?NOTIFY_VALUES(<<"port_confirmed">>)
+                    ,types = [{<<"Reason">>, fun kz_json:is_json_object/1}]
+                    }.
+%%------------------------------------------------------------------------------
+%% @doc Get Port Unconfirmed Notification API definition.
+%% @end
+%%------------------------------------------------------------------------------
 -spec port_unconfirmed_definition() -> kapi_definition:api().
 port_unconfirmed_definition() ->
     #kapi_definition{name = <<"port_unconfirmed">>
@@ -905,6 +931,8 @@ deregister_definition() ->
                                         ,<<"From-User">>
                                         ,<<"Network-IP">>
                                         ,<<"Network-Port">>
+                                        ,<<"Source-IP">>
+                                        ,<<"Source-Port">>
                                         ,<<"Presence-Hosts">>
                                         ,<<"Profile-Name">>
                                         ,<<"RPid">>
@@ -963,6 +991,7 @@ missed_call_definition() ->
                                         ,<<"From-Realm">>
                                         ,<<"From-User">>
                                         ,<<"Notify">>
+                                        ,<<"Owner-ID">>
                                         ,<<"To">>
                                         ,<<"To-Realm">>
                                         ,<<"To-User">>
@@ -970,6 +999,39 @@ missed_call_definition() ->
                                              | ?DEFAULT_OPTIONAL_HEADERS
                                         ]
                     ,values = ?NOTIFY_VALUES(<<"missed_call">>)
+                    ,types = []
+                    }.
+%%------------------------------------------------------------------------------
+%% @doc Get Offline Call Notification Alert API definition.
+%% @end
+%%------------------------------------------------------------------------------
+-spec offline_call_definition() -> kapi_definition:api().
+offline_call_definition() ->
+    #kapi_definition{name = <<"offline_call">>
+                    ,friendly_name = <<"Offline Call">>
+                    ,description = <<"This event is triggered when a corresponding offline call action in a callflow is invoked">>
+                    ,build_fun = fun offline_call/1
+                    ,validate_fun = fun offline_call_v/1
+                    ,publish_fun = fun publish_offline_call/1
+                    ,binding = ?BINDING_STRING(<<"sip">>, <<"offline_call">>)
+                    ,restrict_to = 'offline_call'
+                    ,required_headers = [<<"Account-ID">>
+                                        ,<<"Owner-ID">>
+                                        ,<<"Call-ID">>
+                                        ,<<"Call-Bridged">>
+                                        ]
+                    ,optional_headers = [<<"Caller-ID-Name">>
+                                        ,<<"Caller-ID-Number">>
+                                        ,<<"From-Realm">>
+                                        ,<<"From-User">>
+                                        ,<<"Notify">>
+                                        ,<<"To">>
+                                        ,<<"To-Realm">>
+                                        ,<<"To-User">>
+                                        ,<<"Timestamp">>
+                                             | ?DEFAULT_OPTIONAL_HEADERS
+                                        ]
+                    ,values = ?NOTIFY_VALUES(<<"offline_call">>)
                     ,types = []
                     }.
 %%------------------------------------------------------------------------------
@@ -1001,6 +1063,8 @@ register_definition() ->
                                         ,<<"From-User">>
                                         ,<<"Network-IP">>
                                         ,<<"Network-Port">>
+                                        ,<<"Source-IP">>
+                                        ,<<"Source-Port">>
                                         ,<<"Owner-ID">>
                                         ,<<"To-Host">>
                                         ,<<"To-User">>
@@ -1363,12 +1427,14 @@ api_definitions() ->
     ,port_rejected_definition()
     ,port_scheduled_definition()
     ,port_unconfirmed_definition()
+    ,port_confirmed_definition()
     ,ported_definition()
     ,denied_emergency_bridge_definition()
     ,emergency_bridge_definition()
     ,deregister_definition()
     ,first_occurrence_definition()
     ,missed_call_definition()
+    ,offline_call_definition()
     ,register_definition()
     ,system_alert_definition()
     ,customer_update_definition()
@@ -1436,6 +1502,8 @@ api_definition(<<"port_scheduled">>) ->
     port_scheduled_definition();
 api_definition(<<"port_unconfirmed">>) ->
     port_unconfirmed_definition();
+api_definition(<<"port_confirmed">>) ->
+    port_confirmed_definition();
 api_definition(<<"ported">>) ->
     ported_definition();
 api_definition(<<"denied_emergency_bridge">>) ->
@@ -1448,6 +1516,8 @@ api_definition(<<"first_occurrence">>) ->
     first_occurrence_definition();
 api_definition(<<"missed_call">>) ->
     missed_call_definition();
+api_definition(<<"offline_call">>) ->
+    offline_call_definition();
 api_definition(<<"register">>) ->
     register_definition();
 api_definition(<<"system_alert">>) ->
@@ -2235,6 +2305,30 @@ publish_port_unconfirmed(API, ContentType) ->
 %% @doc Takes prop-list, creates JSON string and publish it on AMQP.
 %% @end
 %%------------------------------------------------------------------------------
+-spec port_confirmed(kz_term:api_terms()) -> api_formatter_return().
+port_confirmed(Prop) ->
+    build_message(Prop, port_confirmed_definition()).
+
+-spec port_confirmed_v(kz_term:api_terms()) -> boolean().
+port_confirmed_v(Prop) ->
+    validate(Prop, port_confirmed_definition()).
+
+-spec publish_port_confirmed(kz_term:api_terms()) -> 'ok'.
+publish_port_confirmed(JObj) ->
+    publish_port_confirmed(JObj, ?DEFAULT_CONTENT_TYPE).
+
+-spec publish_port_confirmed(kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
+publish_port_confirmed(API, ContentType) ->
+    #kapi_definition{binding = Binding
+                    ,values = Values
+                    } = port_confirmed_definition(),
+    {'ok', Payload} = kz_api:prepare_api_payload(API, Values, fun port_confirmed/1),
+    kz_amqp_util:notifications_publish(Binding, Payload, ContentType).
+
+%%------------------------------------------------------------------------------
+%% @doc Takes prop-list, creates JSON string and publish it on AMQP.
+%% @end
+%%------------------------------------------------------------------------------
 -spec ported(kz_term:api_terms()) -> api_formatter_return().
 ported(Prop) ->
     build_message(Prop, ported_definition()).
@@ -2386,6 +2480,30 @@ publish_missed_call(API, ContentType) ->
                     ,values = Values
                     } = missed_call_definition(),
     {'ok', Payload} = kz_api:prepare_api_payload(API, Values, fun missed_call/1),
+    kz_amqp_util:notifications_publish(Binding, Payload, ContentType).
+
+%%------------------------------------------------------------------------------
+%% @doc Takes prop-list, creates JSON string and publish it on AMQP.
+%% @end
+%%------------------------------------------------------------------------------
+-spec offline_call(kz_term:api_terms()) -> api_formatter_return().
+offline_call(Prop) ->
+    build_message(Prop, offline_call_definition()).
+
+-spec offline_call_v(kz_term:api_terms()) -> boolean().
+offline_call_v(Prop) ->
+    validate(Prop, offline_call_definition()).
+
+-spec publish_offline_call(kz_term:api_terms()) -> 'ok'.
+publish_offline_call(JObj) ->
+    publish_offline_call(JObj, ?DEFAULT_CONTENT_TYPE).
+
+-spec publish_offline_call(kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
+publish_offline_call(API, ContentType) ->
+    #kapi_definition{binding = Binding
+                    ,values = Values
+                    } = offline_call_definition(),
+    {'ok', Payload} = kz_api:prepare_api_payload(API, Values, fun offline_call/1),
     kz_amqp_util:notifications_publish(Binding, Payload, ContentType).
 
 %%------------------------------------------------------------------------------

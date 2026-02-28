@@ -5,10 +5,12 @@
 -define(PORT_ATTACHMENT, <<"attachments">>).
 -define(PORT_CANCELED, <<"canceled">>).
 -define(PORT_COMPLETED, <<"completed">>).
+-define(PORT_CONFIRMED, <<"confirmed">>).
 -define(PORT_DESCENDANTS, <<"descendants">>).
 -define(PORT_PENDING, <<"pending">>).
 -define(PORT_REJECTED, <<"rejected">>).
 -define(PORT_SCHEDULED, <<"scheduled">>).
+-define(PORT_STAGED, <<"staged">>).
 -define(PORT_SUBMITTED, <<"submitted">>).
 -define(PORT_UNCONFIRMED, <<"unconfirmed">>).
 -define(PORT_WAITING, ?PORT_UNCONFIRMED).
@@ -33,27 +35,33 @@
 -define(TRANSITION_TYPE, <<"type">>).
 
 -define(PORT_STATES, [?PORT_UNCONFIRMED
+                     ,?PORT_CONFIRMED
                      ,?PORT_SUBMITTED
                      ,?PORT_PENDING
                      ,?PORT_SCHEDULED
+                     ,?PORT_STAGED
                      ,?PORT_COMPLETED
                      ,?PORT_REJECTED
                      ,?PORT_CANCELED
                      ]).
 
 -define(PORT_ACTIVE_STATES, [?PORT_UNCONFIRMED
+                            ,?PORT_CONFIRMED
                             ,?PORT_SUBMITTED
                             ,?PORT_PENDING
                             ,?PORT_SCHEDULED
+                            ,?PORT_STAGED
                             ,?PORT_REJECTED
                             ]).
 
 -define(PORT_PROGRESSING_STATES, [?PORT_SUBMITTED
                                  ,?PORT_PENDING
                                  ,?PORT_SCHEDULED
+                                 ,?PORT_STAGED
                                  ]).
 
 -define(PORT_SUSPENDED_STATES, [?PORT_UNCONFIRMED
+                               ,?PORT_CONFIRMED
                                ,?PORT_REJECTED
                                ]).
 

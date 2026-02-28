@@ -32,6 +32,7 @@
 -export([signing_date/1, signing_date/2, set_signing_date/2]).
 -export([transfer_date/1, transfer_date/2, set_transfer_date/2]).
 -export([winning_carrier/1, winning_carrier/2, set_winning_carrier/2]).
+-export([owner_id/1, owner_id/2, set_owner_id/2]).
 
 %% Private fields
 -export([pvt_account_name/1, pvt_account_name/2, set_pvt_account_name/2]).
@@ -239,6 +240,18 @@ comments(Doc, Default) ->
 -spec set_comments(doc(), kz_json:objects()) -> doc().
 set_comments(Doc, Comments) ->
     kz_json:set_value([<<"comments">>], Comments, Doc).
+
+-spec owner_id(doc()) -> kz_term:api_ne_binary().
+owner_id(Doc) ->
+    owner_id(Doc, 'undefined').
+
+-spec owner_id(doc(), Default) -> kz_term:ne_binary() | Default.
+owner_id(Doc, Default) ->
+    kz_json:get_ne_binary_value([<<"owner_id">>], Doc, Default).
+
+-spec set_owner_id(doc(), kz_term:ne_binary()) -> doc().
+set_owner_id(Doc, Name) ->
+    kz_json:set_value([<<"owner_id">>], Name, Doc).
 
 -spec name(doc()) -> kz_term:api_ne_binary().
 name(Doc) ->

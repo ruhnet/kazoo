@@ -561,6 +561,8 @@ publish_fun(<<"low_balance">>) ->
     fun kapi_notifications:publish_low_balance/1;
 publish_fun(<<"missed_call">>) ->
     fun kapi_notifications:publish_missed_call/1;
+publish_fun(<<"offline_call">>) ->
+    fun kapi_notifications:publish_offline_call/1;
 publish_fun(<<"new_account">>) ->
     fun kapi_notifications:publish_new_account/1;
 publish_fun(<<"new_user">>) ->
@@ -583,6 +585,8 @@ publish_fun(<<"port_scheduled">>) ->
     fun kapi_notifications:publish_port_scheduled/1;
 publish_fun(<<"port_unconfirmed">>) ->
     fun kapi_notifications:publish_port_unconfirmed/1;
+publish_fun(<<"port_confirmed">>) ->
+    fun kapi_notifications:publish_port_confirmed/1;
 publish_fun(<<"ported">>) ->
     fun kapi_notifications:publish_ported/1;
 publish_fun(<<"service_added">>) ->
