@@ -522,19 +522,21 @@ insert_registration(#registration{expires=0}=Registration) ->
     gen_server:cast(?SERVER, {'delete_registration', Registration});
 insert_registration(#registration{initial='true'}=Registration) ->
     gen_server:cast(?SERVER, {'insert_registration', Registration}),
-    lager:info("inserted registration ~s@~s with contact ~s"
+    lager:info("inserted registration ~s@~s with contact ~s (~p)"
               ,[Registration#registration.username
                ,Registration#registration.realm
                ,Registration#registration.contact
+               ,Registration
                ]
               ),
     initial_registration(Registration);
 insert_registration(#registration{}=Registration) ->
     gen_server:cast(?SERVER, {'insert_registration', Registration}),
-    lager:debug("updated registration ~s@~s with contact ~s"
+    lager:debug("updated registration ~s@~s with contact ~s (~p)"
                ,[Registration#registration.username
                 ,Registration#registration.realm
                 ,Registration#registration.contact
+                ,Registration
                 ]).
 
 -spec fetch_registration(kz_term:ne_binary(), kz_term:ne_binary()) ->

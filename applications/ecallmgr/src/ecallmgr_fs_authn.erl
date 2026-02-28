@@ -200,6 +200,7 @@ kamailio_association(Id, Props, Node) ->
     Username = props:get_value(<<"user">>, Props, props:get_value(<<"Auth-User">>, Props)),
     Action = props:get_value(<<"action">>, Props, <<"sip_auth">>),
     CCVs = [{Key, Value} || {<<"X-ecallmgr_", Key/binary>>, Value} <- Props],
+    lager:debug("~p", [CCVs]),
     JObj = kz_json:from_list_recursive([{<<"Auth-Method">>, <<"password">>}
                                        ,{<<"Auth-Password">>, Password}
                                        ,{<<"Auth-Action">>, Action}
@@ -212,6 +213,7 @@ kamailio_association(Id, Props, Node) ->
     {'ok', Xml} = ecallmgr_fs_xml:authn_resp_xml(JObj),
     lager:debug("sending authn XML to ~w: ~s", [Node, Xml]),
     freeswitch:fetch_reply(Node, Id, 'directory', iolist_to_binary(Xml)).
+
 
 -spec directory_not_found(atom(), kz_term:ne_binary()) -> fs_handlecall_ret().
 directory_not_found(Node, Id) ->
@@ -283,7 +285,7 @@ handle_lookup_resp(_, Realm, Username, {'ok', JObj}) ->
             ,{<<"User-ID">>, Username}
             ,{<<"Expires">>, 0}
             ],
-    lager:debug("building authn resp for ~s@~s", [Username, Realm]),
+    lager:debug("building authn resp for ~s@~s ~p", [Username, Realm, JObj]),
     ecallmgr_fs_xml:authn_resp_xml(kz_json:set_values(Props, JObj));
 handle_lookup_resp(_, _, _, {'error', _R}) ->
     lager:debug("authn request lookup failed: ~p", [_R]),
@@ -397,6 +399,7 @@ token_authentication_reply(Id, Props, Node, Endpoint) ->
     PresenceId = presence_id(AccountId, Endpoint),
     CCVs = [{<<"Account-ID">>, AccountId}
            ,{<<"Authorizing-ID">>, kzd_endpoint:id(Endpoint)}
+           ,{<<"Resource-ID">>, kzd_endpoint:id(Endpoint)}
            ,{<<"Authorizing-Type">>, kzd_endpoint:type(Endpoint)}
            ,{<<"Owner-ID">>, kzd_endpoint:id(Endpoint)}
            ,{<<"Realm">>, kzd_accounts:fetch_realm(AccountId)}

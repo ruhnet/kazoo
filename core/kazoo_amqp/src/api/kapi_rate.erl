@@ -43,16 +43,19 @@
 %% AMQP fields for Rating Request
 -define(RATE_REQ_HEADERS, [<<"To-DID">>]).
 -define(OPTIONAL_RATE_REQ_HEADERS, [<<"Account-ID">>
+                                   ,<<"Authorizing-Type">>
                                    ,<<"Call-ID">>
                                    ,<<"Direction">>
                                    ,<<"From-DID">>
                                    ,<<"Options">>
                                    ,<<"Outbound-Flags">>
+                                   ,<<"Owner-ID">>
+                                   ,<<"Calling-Owner-ID">>
                                    ,<<"Ratedeck-ID">>
+                                   ,<<"Reseller-ID">>
                                    ,<<"Resource-ID">>
                                    ,<<"Resource-Type">>
                                    ,<<"Send-Empty">>
-                                   ,<<"Authorizing-Type">>
                                    ]).
 -define(RATE_REQ_VALUES, [{<<"Event-Category">>, ?EVENT_CATEGORY}
                          ,{<<"Event-Name">>, <<"req">>}
@@ -98,6 +101,7 @@
           {'ok', iolist()} |
           {'error', string()}.
 req(Prop) when is_list(Prop) ->
+    lager:info("Props for rate.req ~p", [Prop]),
     case req_v(Prop) of
         'true' -> kz_api:build_message(Prop, ?RATE_REQ_HEADERS, ?OPTIONAL_RATE_REQ_HEADERS);
         'false' -> {'error', "Proplist failed validation for rate_req"}
@@ -209,6 +213,7 @@ broadcast_resp(JObj) ->
 -spec broadcast_resp(kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
 broadcast_resp(Resp, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(Resp, ?RATE_RESP_VALUES, fun resp/1),
+    lager:debug("broadcast_resp: ~p ~p ~p", [Payload, ContentType, ?KEY_RATE_BROADCAST]),
     kz_amqp_util:callmgr_publish(Payload, ContentType, ?KEY_RATE_BROADCAST).
 
 -spec to_did(req()) -> kz_term:ne_binary().

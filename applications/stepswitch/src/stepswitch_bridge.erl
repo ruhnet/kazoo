@@ -395,7 +395,7 @@ build_bridge(#state{endpoints=Endpoints
             ,Name
             ,IsEmergency
             ) ->
-    lager:debug("set outbound caller id to ~s '~s'", [Number, Name]),
+    lager:debug("set outbound caller id to ~s '~s' - (~p)", [Number, Name, OffnetReq]),
     AccountId = kapi_offnet_resource:account_id(OffnetReq),
 
     ReqCCVs = kapi_offnet_resource:custom_channel_vars(OffnetReq, kz_json:new()),
@@ -422,9 +422,9 @@ build_bridge(#state{endpoints=Endpoints
 
 
     {AssertedNumber, AssertedName} = maybe_override_asserted_identity(OffnetReq, {IsEmergency, Number, Name}),
-    
+
     AssertedRealm = maybe_override_asserted_realm(OffnetReq, kzd_accounts:fetch_realm(AccountId)),
-     
+
     props:filter_undefined(
       [{<<"Application-Name">>, <<"bridge">>}
       ,{<<"Asserted-Identity-Name">>, AssertedName}
@@ -460,14 +460,14 @@ build_bridge(#state{endpoints=Endpoints
 
 -spec maybe_override_asserted_realm(kapi_offnet_resource:req(), kz_term:api_binary()) -> kz_term:api_binary().
 maybe_override_asserted_realm(OffnetReq, AccountRealm) ->
-    OverrideRealm = kapi_offnet_resource:assert_uri_realm(OffnetReq),
+    OverrideRealm = kapi_offnet_resource:assert_uri_realm(kapi_offnet_resource:custom_channel_vars(OffnetReq)),
     lager:debug("Maybe override Realm: ~p (~p)",[OverrideRealm, OffnetReq]),
-    case kapi_offnet_resource:assert_uri_realm(kapi_offnet_resource:custom_channel_vars(OffnetReq)) of
+    case OverrideRealm of
         'undefined' -> kapi_offnet_resource:asserted_identity_realm(OffnetReq, AccountRealm);
         Realm -> Realm
     end.
-        
-    
+
+
 
 -spec maybe_override_asserted_identity(kapi_offnet_resource:req(), emergency_override()) -> caller_id().
 maybe_override_asserted_identity(OffnetReq, {'false', _Number, _Name}) ->

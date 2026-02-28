@@ -304,7 +304,7 @@ get_fs_app(Node, UUID, JObj, <<"tones">>) ->
     case kapi_dialplan:tones_v(JObj) of
         'false' -> {'error', <<"tones failed to execute as JObj did not validate">>};
         'true' ->
-            'ok' = set_terminators(Node, UUID, kz_json:get_value(<<"Terminators">>, JObj)),
+            'ok' = set_terminators(Node, UUID, kz_json:get_value(<<"Terminators">>, JObj, [<<"#">>])),
             Tones = kz_json:get_list_value(<<"Tones">>, JObj, []),
             tones_app(Tones)
     end;
@@ -384,7 +384,9 @@ get_fs_app(Node, UUID, JObj, <<"park">>) ->
 get_fs_app(_Node, _UUID, JObj, <<"echo">>) ->
     case kapi_dialplan:echo_v(JObj) of
         'false' -> {'error', <<"echo failed to execute as JObj did not validate">>};
-        'true' -> {<<"echo">>, <<>>}
+        'true' ->
+            'ok' = set_terminators(_Node, _UUID, kz_json:get_value(<<"Terminators">>, JObj, [<<"#">>])),
+            {<<"echo">>, <<>>}
     end;
 
 get_fs_app(_Node, _UUID, JObj, <<"sleep">>) ->

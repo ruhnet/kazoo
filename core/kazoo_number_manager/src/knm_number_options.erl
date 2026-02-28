@@ -25,6 +25,7 @@
         ]).
 
 -export([account_id/1, set_account_id/2
+        ,owner_id/1
         ,has_pending_port/1
         ,inbound_cnam_enabled/1
         ,is_local_number/1
@@ -193,6 +194,10 @@ account_id(Props) when is_list(Props) ->
 -spec set_account_id(extra_options(), kz_term:ne_binary()) -> extra_options().
 set_account_id(Props, AccountId=?MATCH_ACCOUNT_RAW(_)) when is_list(Props) ->
     props:set_value('account_id', AccountId, Props).
+
+-spec owner_id(extra_options()) -> kz_term:ne_binary().
+owner_id(Props) when is_list(Props) ->
+    props:get_ne_binary_value('owner_id', Props).
 
 -spec has_pending_port(extra_options()) -> boolean().
 has_pending_port(Props) when is_list(Props) ->

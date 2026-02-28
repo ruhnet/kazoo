@@ -18,6 +18,7 @@
         ,import_moh/1
         ,set_account_id/2
         ,set_authorized/2
+        ,set_billing/3
         ,fetch/1, fetch/2
         ,fetch_other_leg/1, fetch_other_leg/2
         ,renew/2
@@ -185,6 +186,11 @@ set_account_id(UUID, Value) ->
 set_authorized(UUID, Value) ->
     ecallmgr_fs_channels:update(UUID, #channel.is_authorized, kz_term:is_true(Value)).
 
+-spec set_billing(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
+set_billing(UUID, AccountBilling, ResellerBilling) ->
+    ecallmgr_fs_channels:update(UUID, #channel.account_billing, AccountBilling),
+    ecallmgr_fs_channels:update(UUID, #channel.reseller_billing, ResellerBilling).
+
 -spec renew(atom(), kz_term:ne_binary()) ->
           {'ok', channel()} |
           {'error', 'timeout' | 'badarg'}.
@@ -210,6 +216,7 @@ to_json(Channel) ->
 
 -spec to_props(channel()) -> kz_term:proplist().
 to_props(Channel) ->
+    lager:info("to_props: ~p",[Channel]),
     props:filter_undefined(
       [{<<"account_billing">>, Channel#channel.account_billing}
       ,{<<"account_id">>, Channel#channel.account_id}
@@ -391,6 +398,7 @@ handle_cast('bind_to_events', #state{node=Node}=State) ->
     %% If the freeswitch version is updated so Kazoo can
     %% support for nightmare transfer bind for channel queries
     _ = freeswitch:bind(Node, 'channels'),
+    lager:debug("handle_cast"),
     case gproc:reg({'p', 'l',  ?FS_EVENT_REG_MSG(Node, <<"CHANNEL_DATA">>)}) =:= 'true'
         andalso gproc:reg({'p', 'l', ?FS_EVENT_REG_MSG(Node, <<"CHANNEL_CREATE">>)}) =:= 'true'
         andalso gproc:reg({'p', 'l', ?FS_EVENT_REG_MSG(Node, <<"CHANNEL_DESTROY">>)}) =:= 'true'
@@ -622,13 +630,17 @@ process_specific_event(<<"CHANNEL_DESTROY">>, UUID, Props, Node) ->
     _ = ecallmgr_fs_channels:destroy(UUID, Node),
     maybe_publish_channel_state(Props, Node);
 process_specific_event(<<"CHANNEL_ANSWER">>, UUID, Props, Node) ->
+    lager:debug("<<\"CHANNEL_ANSWER\">>"),
     _ = ecallmgr_fs_channels:update(UUID, #channel.answered, 'true'),
     maybe_publish_channel_state(Props, Node);
 process_specific_event(<<"CHANNEL_DATA">>, UUID, Props, _) ->
+    lager:debug("<<\"CHANNEL_DATA\">>"),
     ecallmgr_fs_channels:updates(UUID, props_to_update(Props));
 process_specific_event(<<"CALL_UPDATE">>, UUID, Props, _) ->
+    lager:debug("<<\"CALL_UPDATE\">>"),
     ecallmgr_fs_channels:updates(UUID, props_to_update(Props));
 process_specific_event(<<"CHANNEL_BRIDGE">>, UUID, Props, _) ->
+    lager:debug("<<\"CHANNEL_BRIDGE\">>"),
     OtherLeg = get_other_leg(UUID, Props),
     ecallmgr_fs_channels:updates(UUID, props:filter_undefined(
                                          [{#channel.other_leg, OtherLeg}
@@ -638,6 +650,7 @@ process_specific_event(<<"CHANNEL_BRIDGE">>, UUID, Props, _) ->
                                 ),
     ecallmgr_fs_channels:update(OtherLeg, #channel.other_leg, UUID);
 process_specific_event(<<"CHANNEL_UNBRIDGE">>, UUID, Props, _) ->
+    lager:debug("<<\"CHANNEL_BRIDGE\">>"),
     OtherLeg = get_other_leg(UUID, Props),
     ecallmgr_fs_channels:update(UUID, #channel.other_leg, 'undefined'),
     ecallmgr_fs_channels:update(OtherLeg, #channel.other_leg, 'undefined');

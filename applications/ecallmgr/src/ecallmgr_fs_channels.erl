@@ -149,6 +149,19 @@ per_minute_accounts() ->
                           ,account_billing = <<"per_minute">>
                           ,reseller_id = '$2'
                           ,reseller_billing = <<"per_minute">>
+                          ,owner_id = '$3'
+                          ,_ = '_'}
+                 ,[{'andalso', {'=/=', '$1', 'undefined'}, {'=/=', '$2', 'undefined'}, {'=/=', '$3', 'undefined'}}]
+                 ,[['$1', {{'$1', '$3'}}, '$2']]
+                 }
+                 ,{#channel{account_id = '$1', owner_id = '$2', account_billing = <<"per_minute">>, _ = '_'}
+                   ,[{'andalso', {'=/=', '$1', 'undefined'}, {'=/=', '$2', 'undefined'}}]
+                   ,['$1',{{'$1','$2'}}]
+                  }
+                ,{#channel{account_id = '$1'
+                          ,account_billing = <<"per_minute">>
+                          ,reseller_id = '$2'
+                          ,reseller_billing = <<"per_minute">>
                           ,_ = '_'}
                  ,[{'andalso', {'=/=', '$1', 'undefined'}, {'=/=', '$2', 'undefined'}}]
                  ,['$$']
@@ -158,11 +171,19 @@ per_minute_accounts() ->
                  ,['$$']
                  }
                 ,{#channel{account_id = '$1', account_billing = <<"per_minute">>, _ = '_'}
-                 ,[{'=/=', '$1', 'undefined'}]
-                 ,['$$']
+                  ,[{'=/=', '$1', 'undefined'}]
+                  ,['$$']
                  }
                 ],
-    lists:usort(lists:flatten(ets:select(?CHANNELS_TBL, MatchSpec))).
+    Selected = ets:select(?CHANNELS_TBL, MatchSpec),
+    lists:usort(lists:foldl(fun maybe_combine_owner/2, [], lists:flatten(Selected))).
+
+-spec maybe_combine_owner(kz_term:any(), kz_term:ne_binaries()) -> kz_term:ne_binaries().
+maybe_combine_owner({AccountId, OwnerId}, Acc) -> [<<AccountId/binary, "/", OwnerId/binary>> | Acc];
+maybe_combine_owner(AccountId, Acc) -> [AccountId | Acc].
+
+
+
 
 -spec per_minute_channels(kz_term:ne_binary()) -> [{atom(), kz_term:ne_binary()}].
 per_minute_channels(AccountId) ->
@@ -184,8 +205,18 @@ per_minute_channels(AccountId) ->
                  ,[]
                  ,[{{'$1', '$2'}}]
                  }
+                ,{#channel{node = '$1'
+                          ,uuid = '$2'
+                          ,owner_id = AccountId
+                          ,account_billing = <<"per_minute">>
+                          ,_ = '_'
+                          }
+                 ,[]
+                 ,[{{'$1', '$2'}}]
+                 }
                 ],
     ets:select(?CHANNELS_TBL, MatchSpec).
+
 
 -spec flush_node(string() | binary() | atom()) -> 'ok'.
 flush_node(Node) ->
@@ -417,6 +448,7 @@ handle_call(_, _, State) ->
 %%------------------------------------------------------------------------------
 -spec handle_cast(any(), state()) -> {'noreply', state()}.
 handle_cast({'channel_updates', UUID, Update}, State) ->
+    lager:debug("channel cache updates ~s ~p", [UUID, Update]),
     ets:update_element(?CHANNELS_TBL, UUID, Update),
     {'noreply', State};
 handle_cast({'destroy_channel', UUID, Node}, State) ->

@@ -260,7 +260,9 @@ relay_request(JObj) ->
 %%------------------------------------------------------------------------------
 -spec maybe_transition_port_in(knm_number_options:extra_options(), kz_json:object()) -> 'ok'.
 maybe_transition_port_in(NumberProps, JObj) ->
-    case knm_number_options:has_pending_port(NumberProps) of
+%% we don't want this to automatically happen BNP 
+%%    case knm_number_options:has_pending_port(NumberProps) of
+    case 'false' of
         'false' -> 'ok';
         'true' -> transition_port_in(NumberProps, JObj)
     end.

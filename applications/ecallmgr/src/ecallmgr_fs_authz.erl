@@ -23,6 +23,14 @@
                    ,<<"Rate-Name">>
                    ,<<"Rate-NoCharge-Time">>
                    ,<<"Surcharge">>
+                   ,<<"Reseller-Rate">>
+                   ,<<"Reseller-Description">>
+                   ,<<"Reseller-Increment">>
+                   ,<<"Reseller-Minium">>
+                   ,<<"Reseller-Name">>
+                   ,<<"Reseller-NoCharge-Time">>
+                   ,<<"Reseller-Surcharge">>
+                   ,<<"Reseller-Discount-Percentage">>
                    ]).
 
 -type authz_reply() :: boolean() | {'true', kz_json:object()}.
@@ -31,13 +39,22 @@
 
 -spec authorize(kzd_freeswitch:data(), kz_term:ne_binary(), atom()) -> authz_reply().
 authorize(Props, CallId, Node) ->
+    lager:debug("Starting AUTHZ for ~s", [kzd_freeswitch:call_direction(Props)]),
     kz_util:put_callid(CallId),
     AuthorizeReply = is_emergency_number(Props)
         orelse is_mobile_device(Props)
         orelse maybe_authorized_channel(Props, Node),
-    lager:info("channel is~s authorized", [authorized_log(AuthorizeReply)]),
+    lager:info("channel (~s) is~s authorized [~p]", [kzd_freeswitch:call_direction(Props), authorized_log(AuthorizeReply), AuthorizeReply]),
     _ = ecallmgr_fs_channel:set_authorized(CallId, was_authorized(AuthorizeReply)),
-    AuthorizeReply.
+    case AuthorizeReply of
+        {'true', JObj} ->
+            AccountBilling = kz_json:get_value(<<"Account-Billing">>, JObj),
+            ResellerBilling = kz_json:get_value(<<"Reseller-Billing">>, JObj),
+            _ = ecallmgr_fs_channel:set_billing(CallId, AccountBilling, ResellerBilling),
+            AuthorizeReply;
+        _ ->
+            AuthorizeReply
+    end.
 
 -spec was_authorized(authz_reply()) -> boolean().
 was_authorized({'true', _}) -> 'true';
@@ -142,9 +159,14 @@ is_consuming_outbound_resource(Props, CallId, Node) ->
 
 -spec is_consuming_inbound_resource(kzd_freeswitch:data(), kz_term:ne_binary(), atom()) -> authz_reply().
 is_consuming_inbound_resource(Props, CallId, Node) ->
+    ShouldAuthz = kapps_config:is_true(?APP_NAME, <<"authz_inbound_resource">>, 'true'),
+    lager:debug("should authz ~p", [ShouldAuthz]),
     case kzd_freeswitch:authorizing_id(Props) =:= 'undefined'
         orelse kzd_freeswitch:authorizing_type(Props) =:= <<"resource">>
     of
+        'true' when not ShouldAuthz ->
+	    lager:debug("inbound channel is authorized because of config setting"),
+	    allow_call(Props, CallId, Node);
         'true' -> request_channel_authorization(Props, CallId, Node);
         'false' ->
             lager:debug("inbound channel is authorized because it is not consuming a resource"),
@@ -169,6 +191,7 @@ request_channel_authorization(Props, CallId, Node) ->
 
 -spec authz_response(kz_json:object(), kzd_freeswitch:data(), kz_term:ne_binary(), atom()) -> authz_reply().
 authz_response(JObj, Props, CallId, Node) ->
+    lager:debug("Auth Response: ~p", [JObj]),
     case kz_json:is_true(<<"Is-Authorized">>, JObj)
         orelse kz_json:is_true(<<"Soft-Limit">>, JObj)
     of
@@ -258,7 +281,7 @@ set_ccv_trunk_usage(JObj, Props, CallId, Node) ->
 -spec rate_call(kzd_freeswitch:data(), kz_term:ne_binary(), atom()) -> authz_reply().
 rate_call(Props, CallId, Node) ->
     _P = kz_util:spawn(fun rate_channel/2, [Props, Node]),
-    lager:debug("rating call in ~p", [_P]),
+    lager:info_unsafe("rating call in ~p", [_P]),
     allow_call(Props, CallId, Node).
 
 -spec allow_call(kzd_freeswitch:data(), kz_term:ne_binary(), atom()) -> authz_reply().
@@ -285,6 +308,7 @@ allow_call(Props, _CallId, _Node) ->
 
 -spec rate_channel(kzd_freeswitch:data(), atom()) -> 'ok'.
 rate_channel(Props, Node) ->
+    lager:info_unsafe("rate_channel ~p", [Props]),
     CallId = kzd_freeswitch:call_id(Props),
     kz_util:put_callid(CallId),
     Direction = kzd_freeswitch:call_direction(Props),
@@ -300,7 +324,7 @@ rate_channel(Props, Node) ->
 rate_channel_resp(Props, Node, {'ok', RespJObj}) ->
     maybe_set_rating_ccvs(Props, RespJObj, Node);
 rate_channel_resp(Props, Node, {'error', _R}) ->
-    lager:debug("rate request lookup failed: ~p", [_R]),
+    lager:info("rate request lookup failed: ~p", [_R]),
 
     %% disconnect only per_minute channels
     case <<"per_minute">> =:= kzd_freeswitch:account_billing(Props)
@@ -321,11 +345,11 @@ maybe_kill_unrated_channel(Props, Node) ->
       	'true' -> true;
         'false' -> false
     end,
-    lager:debug("rate request required for billing: ~p", [IsPerMinute]),
+    lager:info("rate request required for billing: ~p", [IsPerMinute]),
     case IsPerMinute andalso kapps_config:is_true(?APP_NAME, <<Direction/binary, "_rate_required">>, 'false') of
         'false' -> 'ok';
         'true' ->
-            lager:debug("no rate returned for ~s call, killing this channel (~p)", [Direction, Props]),
+            lager:info("no rate returned for ~s call, killing this channel (~p)", [Direction, Props]),
             kill_channel(Props, Node)
     end.
 
@@ -427,17 +451,28 @@ outbound_flags(Props) ->
 
 -spec rating_req(kz_term:ne_binary(), kzd_freeswitch:data()) -> kz_term:proplist().
 rating_req(CallId, Props) ->
-    props:filter_undefined([{<<"To-DID">>, kzd_freeswitch:to_did(Props)}
+    lager:debug("rating props: ~p", [Props]),
+    OwnerId = case kzd_freeswitch:ccv(Props, <<"Owner-ID">>) of
+	'undefined' -> kzd_freeswitch:ccv(Props, <<"Calling-Owner-ID">>);
+	Found -> Found
+    end,
+    FinalProps = props:filter_undefined([{<<"To-DID">>, kzd_freeswitch:to_did(Props)}
                            ,{<<"From-DID">>, kzd_freeswitch:caller_id_number(Props)}
+                           ,{<<"Dest-DID">>, kzd_freeswitch:callee_id_number(Props)}
                            ,{<<"Call-ID">>, CallId}
                            ,{<<"Account-ID">>, kzd_freeswitch:account_id(Props)}
+                           ,{<<"Owner-ID">>,  OwnerId}
+                           ,{<<"Calling-Owner-ID">>,  kzd_freeswitch:ccv(Props, <<"Calling-Owner-ID">>)}
+                           ,{<<"Reseller-ID">>,  kzd_freeswitch:ccv(Props, <<"Reseller-ID">>)}
                            ,{<<"Direction">>, kzd_freeswitch:call_direction(Props)}
                            ,{<<"Send-Empty">>, 'true'}
                            ,{<<"Outbound-Flags">>, outbound_flags(Props)}
                            ,{<<"Resource-ID">>, kzd_freeswitch:ccv(Props, <<"Resource-ID">>)}
                            ,{<<"Authorizing-Type">>, kzd_freeswitch:authorizing_type(Props)}
                             | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
-                           ]).
+                           ]),
+   lager:info("Final props: ~p", [FinalProps]),
+   FinalProps.
 
 -spec is_emergency_number(kzd_freeswitch:data()) -> authz_reply().
 is_emergency_number(Props) ->
