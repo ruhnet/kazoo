@@ -12,6 +12,8 @@
 %%%
 %%%   <dt>`engine'</dt>
 %%%   <dd>`flite' or `ispeech'.</dd>
+%%%
+%%%   <dt>`readcli'</dd>
 %%% </dl>
 %%%
 %%% @end
@@ -34,7 +36,7 @@ handle(Data, Call) ->
 
     Command = kz_json:from_list(
                 [{<<"Application-Name">>, <<"tts">>}
-                ,{<<"Text">>, to_say(Data)}
+                ,{<<"Text">>, to_say(Data, Call)}
                 ,{<<"Terminators">>, kapps_call_command:tts_terminators(terminators(Data))}
                 ,{<<"Voice">>, kapps_call_command:tts_voice(voice(Data))}
                 ,{<<"Language">>, kapps_call_command:tts_language(language(Data), Call)}
@@ -81,8 +83,11 @@ language(Data) ->
 voice(Data) ->
     kz_json:get_binary_value(<<"voice">>, Data).
 
-to_say(Data) ->
-    kz_json:get_binary_value(<<"text">>, Data).
+to_say(Data, Call) ->
+    case kz_json:get_binary_value(<<"readcli">>, Data) of
+        'undefined' -> kz_json:get_binary_value(<<"text">>, Data);
+        _ -> knm_converters:normalize(kapps_call:caller_id_number(Call))
+    end.
 
 endless_playback(Data) ->
     kz_json:get_boolean_value(<<"endless_playback">>, Data).
