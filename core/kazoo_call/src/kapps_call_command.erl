@@ -23,7 +23,7 @@
         ,get_event_type/1
         ]).
 
--export([audio_macro/2, audio_macro/3]).
+-export([audio_macro/2, audio_macro/3, audio_macro/4]).
 -ifdef(TEST).
 -export([macros_to_commands/3]).
 -endif.
@@ -474,20 +474,26 @@ audio_macro(Prompts, Call) -> audio_macro(Prompts, Call, kz_binary:rand_hex(3)).
 
 -spec audio_macro(audio_macro_prompts(), kapps_call:call(), kz_term:ne_binary()) ->
           binary().
-audio_macro(Prompts, Call, GroupId) ->
-    Queue = macros_to_commands(Prompts, Call, GroupId),
+audio_macro(Prompts, Call, GroupId) -> audio_macro(Prompts, Call, GroupId, <<"tail">>). 
 
+-spec audio_macro(audio_macro_prompts(), kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) ->
+          binary().
+audio_macro(Prompts, Call, GroupId, Insert) ->
+    Queue = macros_to_commands(Prompts, Call, GroupId),
     NoopId = noop_id(),
     Commands = [kz_json:from_list(
                   [{<<"Application-Name">>, <<"noop">>}
                   ,{<<"Msg-ID">>, NoopId}
                   ,{<<"Call-ID">>, kapps_call:call_id(Call)}
                   ])
-                | Queue
+                 | Queue
                ],
     Command = [{<<"Application-Name">>, <<"queue">>}
               ,{<<"Commands">>, Commands}
+	      ,{<<"Insert-At">>, Insert}
               ],
+    lager:debug("macro_to_command ~p", [Command]),
+
     send_command(Command, Call),
     NoopId.
 
