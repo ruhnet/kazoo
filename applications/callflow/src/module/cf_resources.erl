@@ -108,11 +108,16 @@ handle_bridge_failure(Cause, Code, Call) ->
 -spec build_offnet_request(kz_json:object(), kapps_call:call()) -> kz_term:proplist().
 build_offnet_request(Data, Call) ->
     {ECIDNum, ECIDName} = kz_attributes:caller_id(<<"emergency">>, Call),
-    {AssertedNumber, AssertedName, AssertedRealm} =
-        get_asserted_identity(Data, Call),
+    {AssertedNumber, AssertedName, AssertedRealm} =  get_asserted_identity(Data, Call),
+    lager:debug("using asserted identity: ~p", [{AssertedNumber, AssertedName, AssertedRealm}]),
     {CIDNumber, CIDName} = get_caller_id(Data, Call),
+    lager:debug("using caller identity: ~p", [{CIDNumber, CIDName}]),
+
     lager:debug("Force Interaccount ~s",[kz_json:get_ne_binary_value(<<"force_interaccount">>, Data)]),
     PrivacyFlags = get_privacy_flags(Call),
+    lager:debug("Privacy Flags: ~p", [PrivacyFlags]),
+    %CallPrivacyFlags = get_privacy_flags(Call),
+    %PrivacyFlags = kz_json:merge_jobjs(get_privacy_flags(Call), kz_json:ge)
     props:filter_undefined(
       [{?KEY_ACCOUNT_ID, kapps_call:account_id(Call)}
       ,{?KEY_ACCOUNT_REALM, kapps_call:account_realm(Call)}
@@ -292,6 +297,7 @@ get_asserted_identity(_Data, Call) ->
             CallerId = kzd_devices:caller_id(Endpoint),
             {DefaultNumber, DefaultName, DefaultRealm} =
                 maybe_default_asserted_identity(Endpoint, Call),
+	    lager:debug("CID: ~p Asserted: ~p",[CallerId, {DefaultNumber, DefaultName, DefaultRealm}]),
             {kzd_caller_id:asserted_number(CallerId, DefaultNumber)
             ,kzd_caller_id:asserted_name(CallerId, DefaultName)
             ,kzd_caller_id:asserted_realm(CallerId, DefaultRealm)
@@ -304,7 +310,7 @@ maybe_default_asserted_identity(Endpoint, Call) ->
     CallerId = kzd_devices:caller_id(Endpoint),
     case kapps_config:get_is_true(?RES_CONFIG_CAT, <<"default_asserted_identity">>, 'false') of
         'false' -> lager:debug("default_asserted_identity is false"),{'undefined', 'undefined', 'undefined'};
-        'true' -> lager:debug("default_asserted_identity is true: ~p",[Endpoint]),
+        'true' -> lager:debug("default_asserted_identity is true"),
             {kzd_caller_id:external_number(CallerId)
             ,get_asserted_default_name(CallerId, Call)
             ,kapps_call:account_realm(Call)
@@ -314,10 +320,17 @@ maybe_default_asserted_identity(Endpoint, Call) ->
 -spec get_asserted_default_name(kz_json:object(), kapps_call:call()) -> kz_term:api_binary().
 get_asserted_default_name(CallerId, Call) ->
     case kzd_caller_id:external_name(CallerId) of
-        'undefined' ->
+        'undefined' -> maybe_get_asserted_account_name(Call);
+        Name -> Name
+    end.
+
+-spec maybe_get_asserted_account_name(kapps_call:call()) -> kz_term:api_binary().
+maybe_get_asserted_account_name(Call) ->
+    case kapps_config:get_is_true(?RES_CONFIG_CAT, <<"default_asserted_account_name_fallback">>, 'true') of
+        'true' ->
             AccountId = kapps_call:account_id(Call),
             kzd_accounts:fetch_name(AccountId);
-        Name -> Name
+        'false' -> 'undefined'
     end.
 
 -spec get_hunt_account_id(kz_json:object(), kapps_call:call()) -> kz_term:api_binary().
