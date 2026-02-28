@@ -282,14 +282,17 @@ new(PortReq, Options) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
+-spec transition_to_confirmed(kz_json:object(), transition_metadata()) -> transition_response().
+transition_to_confirmed(JObj, Metadata) ->
+    transition(JObj, Metadata, [?PORT_UNCONFIRMED, ?PORT_REJECTED], ?PORT_CONFIRMED).
 
 -spec transition_to_submitted(kz_json:object(), transition_metadata()) -> transition_response().
 transition_to_submitted(JObj, Metadata) ->
-    transition(JObj, Metadata, [?PORT_UNCONFIRMED, ?PORT_REJECTED], ?PORT_SUBMITTED).
+    transition(JObj, Metadata, [?PORT_UNCONFIRMED, ?PORT_CONFIRMED, ?PORT_REJECTED], ?PORT_SUBMITTED).
 
 -spec transition_to_pending(kz_json:object(), transition_metadata()) -> transition_response().
 transition_to_pending(JObj, Metadata) ->
-    transition(JObj, Metadata, [?PORT_SUBMITTED], ?PORT_PENDING).
+    transition(JObj, Metadata, [?PORT_CONFIRMED, ?PORT_SUBMITTED, ?PORT_REJECTED], ?PORT_PENDING).
 
 -spec transition_to_scheduled(kz_json:object(), transition_metadata()) -> transition_response().
 transition_to_scheduled(JObj, Metadata) ->
@@ -301,20 +304,24 @@ states_to_scheduled(_AllowFromSubmitted='false') ->
 states_to_scheduled(_AllowFromSubmitted='true') ->
     [?PORT_SUBMITTED | states_to_scheduled('false')].
 
+-spec transition_to_staged(kz_json:object(), transition_metadata()) -> transition_response().
+transition_to_staged(JObj, Metadata) ->
+    transition(JObj, Metadata, [?PORT_SCHEDULED], ?PORT_STAGED).
+
 -spec transition_to_complete(kz_json:object(), transition_metadata()) -> transition_response().
 transition_to_complete(JObj, Metadata) ->
-    case transition(JObj, Metadata, [?PORT_PENDING, ?PORT_SCHEDULED, ?PORT_REJECTED], ?PORT_COMPLETED) of
+    case transition(JObj, Metadata, [?PORT_PENDING, ?PORT_SCHEDULED, ?PORT_REJECTED, ?PORT_STAGED], ?PORT_COMPLETED) of
         {'error', _}=E -> E;
         {'ok', Transitioned} -> completed_port(Transitioned)
     end.
 
 -spec transition_to_rejected(kz_json:object(), transition_metadata()) -> transition_response().
 transition_to_rejected(JObj, Metadata) ->
-    transition(JObj, Metadata, [?PORT_SUBMITTED, ?PORT_PENDING, ?PORT_SCHEDULED], ?PORT_REJECTED).
+    transition(JObj, Metadata, [?PORT_CONFIRMED, ?PORT_SUBMITTED, ?PORT_PENDING, ?PORT_SCHEDULED, ?PORT_STAGED], ?PORT_REJECTED).
 
 -spec transition_to_canceled(kz_json:object(), transition_metadata()) -> transition_response().
 transition_to_canceled(JObj, Metadata) ->
-    transition(JObj, Metadata, [?PORT_UNCONFIRMED, ?PORT_SUBMITTED, ?PORT_PENDING, ?PORT_SCHEDULED, ?PORT_REJECTED], ?PORT_CANCELED).
+    transition(JObj, Metadata, [?PORT_UNCONFIRMED, ?PORT_CONFIRMED, ?PORT_SUBMITTED, ?PORT_PENDING, ?PORT_SCHEDULED, ?PORT_STAGED, ?PORT_REJECTED], ?PORT_CANCELED).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -333,7 +340,8 @@ attempt_transition(PortReq, Metadata, ToState) ->
           boolean().
 is_user_allowed_to_move_state(_, #{}, ToState, _)
   when ToState =:= ?PORT_UNCONFIRMED;
-       ToState =:= ?PORT_SUBMITTED ->
+         ToState =:= ?PORT_CONFIRMED;
+         ToState =:= ?PORT_SUBMITTED ->
     'true';
 is_user_allowed_to_move_state(PortReq, #{}, _, 'undefined') ->
     lager:debug("port authority id is missing, disallowing state change for port ~s", [kz_doc:id(PortReq)]),
@@ -343,7 +351,10 @@ is_user_allowed_to_move_state(PortReq, #{auth_account_id := 'undefined'}, _, _) 
     'false';
 is_user_allowed_to_move_state(PortReq, #{auth_account_id := AuthAccountId}, ?PORT_CANCELED, PortAuthority) ->
     AuthAccountId =:= PortAuthority
-        orelse (current_state(PortReq) =:= ?PORT_UNCONFIRMED
+        orelse ((current_state(PortReq) =:= ?PORT_UNCONFIRMED
+                orelse current_state(PortReq) =:= ?PORT_CONFIRMED
+                orelse current_state(PortReq) =:= ?PORT_REJECTED
+                )
                 andalso kzd_accounts:is_in_account_hierarchy(AuthAccountId, kz_doc:account_id(PortReq), 'true')
                )
         orelse kz_services_reseller:get_id('undefined') =:= AuthAccountId; %% checks if superduper
@@ -352,12 +363,16 @@ is_user_allowed_to_move_state(_, #{auth_account_id := AuthAccountId}, _, PortAut
         orelse kz_services_reseller:get_id('undefined') =:= AuthAccountId. %% checks if superduper
 
 -spec maybe_transition(kz_json:object(), transition_metadata(), kz_term:ne_binary()) -> transition_response().
+maybe_transition(PortReq, Metadata, ?PORT_CONFIRMED) ->
+    transition_to_confirmed(PortReq, Metadata);
 maybe_transition(PortReq, Metadata, ?PORT_SUBMITTED) ->
     transition_to_submitted(PortReq, Metadata);
 maybe_transition(PortReq, Metadata, ?PORT_PENDING) ->
     transition_to_pending(PortReq, Metadata);
 maybe_transition(PortReq, Metadata, ?PORT_SCHEDULED) ->
     transition_to_scheduled(PortReq, Metadata);
+maybe_transition(PortReq, Metadata, ?PORT_STAGED) ->
+    transition_to_staged(PortReq, Metadata);
 maybe_transition(PortReq, Metadata, ?PORT_COMPLETED) ->
     transition_to_complete(PortReq, Metadata);
 maybe_transition(PortReq, Metadata, ?PORT_REJECTED) ->
@@ -586,13 +601,16 @@ completed_portin(Num, AccountId, #{optional_reason := OptionalReason}) ->
 transition_numbers(PortReq) ->
     PortReqId = kz_doc:id(PortReq),
     AccountId = kz_doc:account_id(PortReq),
+    OwnerId = kzd_port_requests:owner_id(PortReq),
     Options = [{'auth_by', ?KNM_DEFAULT_AUTH_BY}
               ,{'assign_to', AccountId}
+              ,{'owner_id', OwnerId}
               ,{'dry_run', 'false'}
               ,{'ported_in', 'true'}
-              ,{'public_fields', kz_json:from_list([{<<"port_id">>, PortReqId}])}
+              ,{'owner_id', OwnerId}
+              ,{'public_fields', kz_json:from_list([{<<"port_id">>, PortReqId}, {<<"owner_id">>, OwnerId}])}
               ],
-    lager:debug("creating local numbers for port ~s", [PortReqId]),
+    lager:debug("creating local numbers for port ~s for owner ~p", [PortReqId,OwnerId]),
     Numbers = kz_json:get_keys(kzd_port_requests:numbers(PortReq)),
     case knm_numbers:create(Numbers, Options) of
         #{ko := KOs} when map_size(KOs) =:= 0 ->
