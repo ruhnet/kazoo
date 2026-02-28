@@ -293,6 +293,9 @@ build_local_extension(#state{number_props=Props
     FromRealm = get_account_realm(OriginalAccountId),
     FromURI = <<"sip:", CIDNum/binary, "@", Realm/binary>>,
     CCVsOrig = kapi_offnet_resource:custom_channel_vars(OffnetReq, kz_json:new()),
+    lager:debug("Orig: ~p ~p", [CCVsOrig,OffnetReq]),
+    PrivacyHideNumber = kz_json:get_value(<<"Privacy-Hide-Number">>, OffnetReq, false),
+    PrivacyHideName = kz_json:get_value(<<"Privacy-Hide-Name">>, OffnetReq, fasle),
     CAVs = kapi_offnet_resource:custom_application_vars(OffnetReq),
 
     CCVs = kz_json:set_values([{<<"Ignore-Display-Updates">>, <<"false">>}
@@ -309,6 +312,10 @@ build_local_extension(#state{number_props=Props
                                                                                         ,stepswitch_bridge:bridge_outbound_cid_name(OffnetReq)
                                                                                         }),
 
+    RequestorCCVs = kz_json:get_ne_json_value(<<"Requestor-Custom-Channel-Vars">>, OffnetReq, kz_json:new()),
+    OwnerId = kz_json:get_first_defined([<<"Owner-ID">>], CCVs),
+    CallingOwnerId = kz_json:get_first_defined([<<"Owner-ID">>,<<"Calling-Owner-ID">>], RequestorCCVs),
+
     CCVUpdates = kz_json:from_list(
                    [{<<?CHANNEL_LOOPBACK_HEADER_PREFIX, "Inception">>, <<Number/binary, "@", Realm/binary>>}
                    ,{<<?CHANNEL_LOOPBACK_HEADER_PREFIX, "Account-ID">>, AccountId}
@@ -317,10 +324,12 @@ build_local_extension(#state{number_props=Props
                    ,{<<?CHANNEL_LOOPBACK_HEADER_PREFIX, "From-URI">>, FromURI}
                    ,{<<?CHANNEL_LOOPBACK_HEADER_PREFIX, "Inception-Account-ID">>, OriginalAccountId}
                    ,{<<?CHANNEL_LOOPBACK_HEADER_PREFIX, "Resource-Type">>, <<"onnet-origination">>}
+                   ,{<<?CHANNEL_LOOPBACK_HEADER_PREFIX, "Owner-ID">>, OwnerId}
                    ,{<<"Resource-ID">>, AccountId}
                    ,{<<"Loopback-Request-URI">>, <<Number/binary, "@", Realm/binary>>}
                    ,{<<"Resource-Type">>, <<"onnet-termination">>}
-                   ]),
+                   ,{<<"Calling-Owner-ID">>, CallingOwnerId}
+                   ]), 
 
     Endpoint = kz_json:from_list(
                  [{<<"Invite-Format">>, <<"loopback">>}
@@ -330,6 +339,8 @@ build_local_extension(#state{number_props=Props
                  ,{<<"Custom-Channel-Vars">>, CCVUpdates}
                  ,{<<"Outbound-Caller-ID-Name">>, CIDName}
                  ,{<<"Outbound-Caller-ID-Number">>, CIDNum}
+                 ,{<<"Privacy-Hide-Name">>, PrivacyHideName}
+                 ,{<<"Privacy-Hide-Number">>, PrivacyHideNumber}
                  ,{<<"Outbound-Callee-ID-Name">>, CEDName}
                  ,{<<"Outbound-Callee-ID-Number">>, CEDNum}
                  ,{<<"Caller-ID-Name">>, CIDName}
