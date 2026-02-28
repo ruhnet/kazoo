@@ -37,7 +37,7 @@
        ,kz_json:from_list(
           [{<<"type">>, <<"array">>}
           ,{<<"description">>, <<"A list of object actions to handle">>}
-          ,{<<"items">>, ?DOC_ACTIONS}
+          ,{<<"items">>, ?DOC_ACTIONS ++ [<<"all">>]}
           ]
          )
        ).
@@ -93,7 +93,7 @@ account_bindings(_AccountId) -> [].
 handle_event(JObj, _Props) ->
     kz_util:put_callid(JObj),
     'true' = kapi_conf:doc_update_v(JObj),
-
+    lager:debug("API: ~p", [JObj]),
     AccountId = find_account_id(JObj),
     case AccountId =/= 'undefined'
         andalso webhooks_util:find_webhooks(?HOOK_NAME, AccountId) of
@@ -106,6 +106,7 @@ handle_event(JObj, _Props) ->
             Event = format_event(JObj, AccountId),
             Action = kz_api:event_name(JObj),
             Type = kapi_conf:get_type(JObj),
+            lager:debug("Action: ~s Type: ~s Event: ~p Hooks: ~p", [Action, Type, Event, Hooks]),
             Filtered = [Hook || Hook <- Hooks, match_action_type(Hook, Action, Type)],
             webhooks_util:fire_hooks(Event, Filtered)
     end.
@@ -118,8 +119,9 @@ match_action_type(#webhook{hook_event = ?HOOK_NAME
 match_action_type(#webhook{hook_event = ?HOOK_NAME
                           ,custom_data=JObj
                           }, Action, Type) ->
-    kz_json:get_value(<<"action">>, JObj) =:= Action
-        andalso kz_json:get_value(<<"type">>, JObj) =:= Type;
+    kz_json:get_value(<<"type">>, JObj) =:= Type
+        andalso (kz_json:get_value(<<"action">>, JObj) =:= Action
+                orelse kz_json:get_value(<<"action">>, JObj) =:= <<"all">>);
 match_action_type(#webhook{}, _Action, _Type) ->
     'true'.
 
@@ -142,12 +144,17 @@ bindings() ->
 %%------------------------------------------------------------------------------
 -spec format_event(kz_json:object(), kz_term:ne_binary()) -> kz_json:object().
 format_event(JObj, AccountId) ->
-    kz_json:from_list(
-      [{<<"id">>, kapi_conf:get_id(JObj)}
-      ,{<<"account_id">>, AccountId}
-      ,{<<"action">>, kz_api:event_name(JObj)}
-      ,{<<"type">>, kapi_conf:get_type(JObj)}
-      ]).
+    %% normalise keys and include all the data for the event
+    Event = kz_json:normalize(JObj),
+    %% -BNP we actually want the event_name as type (object doc name)
+    %% and add an event_action as event_name (edit/modify/created)
+    %% rename the category as the hook (object)
+    Updates = [{<<"account_id">>, AccountId}
+              ,{<<"event_name">>, kapi_conf:get_type(JObj)}
+              ,{<<"event_action">>, kz_api:event_name(JObj)}
+              ,{<<"event_category">>, ?HOOK_NAME}
+              ],
+    kz_json:set_values(Updates, Event).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -156,12 +163,13 @@ format_event(JObj, AccountId) ->
 -spec find_account_id(kz_json:object()) -> kz_term:ne_binary().
 find_account_id(JObj) ->
     DB = kapi_conf:get_database(JObj),
-    find_account_id(kzs_util:db_classification(DB), DB, kapi_conf:get_id(JObj)).
+    find_account_id(kzs_util:db_classification(DB), DB, JObj).
 
 -spec find_account_id(atom(), kz_term:ne_binary(), kz_term:ne_binary()) -> kz_term:ne_binary().
-find_account_id(Classification, DB, _Id)
+find_account_id(Classification, DB, _JObj)
   when Classification =:= 'account';
        Classification =:= 'modb' ->
     kz_util:format_account_id(DB, 'raw');
-find_account_id('aggregate', <<"accounts">>, Id) -> Id;
+find_account_id('aggregate', <<"accounts">>, JObj) -> kapi_conf:get_id(JObj);
+find_account_id('aggregate', <<"port_requests">>, JObj) -> kapi_conf:get_account_id(JObj);
 find_account_id(_, _, _) -> 'undefined'.

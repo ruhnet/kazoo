@@ -105,6 +105,7 @@ base_hook_event(JObj, AccountId) ->
 
 -spec base_hook_event(kz_json:object(), kz_term:api_binary(), kz_term:proplist()) -> kz_json:object().
 base_hook_event(JObj, AccountId, Acc) ->
+    lager:debug('JObj: ~p', [JObj]),
     WasGlobal = kz_term:is_true(ccv(JObj, <<"Global-Resource">>)),
 
     kz_json:from_list(
@@ -125,6 +126,7 @@ base_hook_event(JObj, AccountId, Acc) ->
       ,{<<"inception">>, kz_json:get_value(<<"Inception">>, JObj)}
       ,{<<"local_resource_id">>, resource_used(WasGlobal, JObj)}
       ,{<<"local_resource_used">>, (not WasGlobal)}
+      ,{<<"resource_type">>, ccv(JObj, <<"Resource-Type">>)}
       ,{<<"is_internal_leg">>, kz_json:is_true(<<"Channel-Is-Loopback">>, JObj)}
       ,{<<"other_leg_call_id">>, kz_call_event:other_leg_call_id(JObj)}
       ,{<<"owner_id">>, kz_call_event:owner_id(JObj)}
