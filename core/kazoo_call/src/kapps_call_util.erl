@@ -10,7 +10,7 @@
 
 -export([base_call_cost/3]).
 -export([call_cost/1]).
--export([calculate_call/1, calculate_call/5]).
+-export([calculate_call/1, calculate_call/2, calculate_call/5]).
 -export([per_minute_cost/1]).
 -export([calculate_cost/5]).
 -export([filter_ccvs/1]).
@@ -48,7 +48,10 @@ call_cost(JObj) ->
     Cost.
 
 -spec calculate_call(kz_json:object()) -> {integer(), kz_currency:units()}.
-calculate_call(JObj) ->
+calculate_call(JObj) -> calculate_call(JObj, 'false').
+
+-spec calculate_call(kz_json:object(), boolean()) -> {integer(), kz_currency:units()}.
+calculate_call(JObj, IsReseller) ->
     CCVs = kz_json:get_first_defined([<<"Custom-Channel-Vars">>
                                      ,<<"custom_channel_vars">>
                                      ]
@@ -61,6 +64,7 @@ calculate_call(JObj) ->
     %% if we transition from allotment to per_minute the offset has a slight
     %% fudge factor to allow accounts with no credit to terminate the call
     %% on the next re-authorization cycle (to allow for the in-flight time)
+    ChargeBillingSecs = BillingSecs - RateNoChargeTime,
     case BillingSecs =< 0 of
         'true' -> {0, 0};
         'false' when BillingSecs =< RateNoChargeTime ->
@@ -71,17 +75,49 @@ calculate_call(JObj) ->
             RateIncr = get_integer_value(<<"Rate-Increment">>, CCVs, 60),
             RateMin = get_integer_value(<<"Rate-Minimum">>, CCVs),
             Surcharge = get_integer_value(<<"Surcharge">>, CCVs),
-            {ChargedSeconds, Cost} = calculate_call(Rate, RateIncr, RateMin, Surcharge, BillingSecs),
-            Discount = trunc((get_integer_value(<<"Discount-Percentage">>, CCVs) * 0.01) * Cost),
-            lager:info("rate $~p,"
+            DiscountPercent = get_integer_value(<<"Discount-Percentage">>, CCVs),
+            case IsReseller of
+               'true' ->
+                 RRate = get_integer_value(<<"Reseller-Rate">>, CCVs, Rate),
+                 RRateIncr = get_integer_value(<<"Reseller-RateIncr">>, CCVs, RateIncr),
+                 RRateMin = get_integer_value(<<"Reseller-RateMin">>, CCVs, RateMin),
+                 RSurcharge = get_integer_value(<<"Reseller-Surcharge">>, CCVs, Surcharge),
+                 RDiscountPercent = get_integer_value(<<"Reseller-Discount">>, CCVs, DiscountPercent),
+                 RRateNoChargeTime = get_integer_value(<<"Reseller-Rate-NoCharge-Time">>, CCVs, RateNoChargeTime),
+                 {ChargedSeconds, Cost} = calculate_call(RRate, RRateIncr, RRateMin, RSurcharge, ChargeBillingSecs),
+                 Discount = trunc((RDiscountPercent * 0.01) * Cost),
+                 lager:info("rate £~p,"
                        " increment ~ps,"
                        " minimum ~ps,"
-                       " surcharge $~p,"
+                       " surcharge £~p,"
                        " for ~ps (~ps),"
                        " no charge time ~ps,"
-                       " sub total $~p,"
-                       " discount $~p,"
-                       " total $~p"
+                       " sub total £~p,"
+                       " discount £~p,"
+                       " total £~p"
+                      ,[kz_currency:units_to_dollars(RRate)
+                       ,RateIncr, RRateMin
+                       ,kz_currency:units_to_dollars(RSurcharge)
+                       ,BillingSecs
+                       ,ChargedSeconds
+                       ,RRateNoChargeTime
+                       ,kz_currency:units_to_dollars(Cost)
+                       ,kz_currency:units_to_dollars(Discount)
+                       ,kz_currency:units_to_dollars(Cost - Discount)
+                       ]),
+                 {ChargedSeconds, trunc(Cost - Discount)};
+              'false' ->
+                 {ChargedSeconds, Cost} = calculate_call(Rate, RateIncr, RateMin, Surcharge, ChargeBillingSecs),
+                 Discount = trunc((DiscountPercent * 0.01) * Cost),
+                 lager:info("rate £~p,"
+                       " increment ~ps,"
+                       " minimum ~ps,"
+                       " surcharge £~p,"
+                       " for ~ps (~ps),"
+                       " no charge time ~ps,"
+                       " sub total £~p,"
+                       " discount £~p,"
+                       " total £~p"
                       ,[kz_currency:units_to_dollars(Rate)
                        ,RateIncr, RateMin
                        ,kz_currency:units_to_dollars(Surcharge)
@@ -92,7 +128,8 @@ calculate_call(JObj) ->
                        ,kz_currency:units_to_dollars(Discount)
                        ,kz_currency:units_to_dollars(Cost - Discount)
                        ]),
-            {ChargedSeconds, trunc(Cost - Discount)}
+                {ChargedSeconds, trunc(Cost - Discount)}
+            end
     end.
 
 -spec get_integer_value(kz_term:ne_binary(), kz_json:object()) -> integer().
