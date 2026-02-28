@@ -72,6 +72,7 @@ authz_details([Channel|Channels]) ->
     pretty_print_field(<<"Per-Minute Cost">>, authz_details_cost(Props, Timestamp)),
     pretty_print_field(<<"Account ID">>, props:get_value(<<"Account-ID">>, Props)),
     pretty_print_field(<<"Account Billing">>, props:get_value(<<"Account-Billing">>, Props)),
+    pretty_print_field(<<"Owner ID">>, props:get_value(<<"Owner-ID">>, Props)),
     pretty_print_field(<<"Reseller ID">>, props:get_value(<<"Reseller-ID">>, Props)),
     pretty_print_field(<<"Reseller Billing">>, props:get_value(<<"Reseller-Billing">>, Props)),
     pretty_print_field(<<"Soft-limit">>, props:get_value(<<"Soft-Limit">>, Props)),
@@ -97,6 +98,7 @@ authz_details_cost(Props, Timestamp) ->
         Answered ->
             BillingSeconds = Timestamp - Answered,
             JObj = kz_json:from_list([{<<"Billing-Seconds">>, BillingSeconds} | Props]),
+            lager:debug("Props: ~p", [JObj]),
             kz_currency:units_to_dollars(kapps_call_util:call_cost(JObj))
     end.
 

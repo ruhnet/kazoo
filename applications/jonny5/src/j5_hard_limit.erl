@@ -19,6 +19,7 @@ authorize(Request, Limits) ->
     lager:debug("authorizing hard_limits"),
     case calls_at_limit(Limits)
         orelse resource_consumption_at_limit(Limits, Request)
+        orelse owner_resource_consumption_at_limit(Limits, Request)
         orelse inbound_channels_per_did_at_limit(Request, Limits)
     of
         'true' -> j5_request:deny(<<"hard_limit">>, Request, Limits);
@@ -61,6 +62,25 @@ resource_consumption_at_limit(Limits, Request) ->
     lager:debug("resource_consumption_limit ~p:~p (~p)",[Limit,Used,AccountBilling]),
     should_deny(Limit, Used).
 
+-spec owner_resource_consumption_at_limit(j5_limits:limits(), j5_request:request()) -> boolean().
+owner_resource_consumption_at_limit(Limits, Request) ->
+    AccountBilling = j5_request:account_billing(Request),
+    Increment = case  AccountBilling =/= 'undefined' 
+            andalso AccountBilling =/= <<"limits_disabled">> 
+    of
+        'true' -> 1;
+	'false' -> 0
+    end,
+    OwnerLimits = j5_limits:owner_limits(Limits),
+    lager:debug("owner limits ~p", [OwnerLimits]),
+    Limit = case kz_json:get_value(<<"resource_consuming_calls">>, OwnerLimits, 'undefined') of
+	'undefined' -> -1;
+	_Else -> _Else
+    end,
+    Used  = j5_channels:owner_resource_consuming(j5_limits:account_id(Limits), j5_request:owner_id(Request)) + Increment,
+    lager:debug("owner resource_consumption_limit ~p:~p (~p)",[Limit,Used,AccountBilling]),
+    should_deny(Limit, Used).
+
 %%------------------------------------------------------------------------------
 %% @doc
 %% @end
@@ -81,24 +101,8 @@ inbound_channels_per_did_at_limit(Request, Limits) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec inbound_channels_per_did_at_limit(j5_request:request(), j5_limits:limits()) -> boolean().
-inbound_channels_per_did_at_limit(Request, Limits) ->
-    AccountId = j5_limits:account_id(Limits),
-    ToDID = j5_request:number(Request),
-    PerDIDJObj = j5_limits:inbound_channels_per_did_rules(Limits),
-    Limit = match_did_limits(ToDID, PerDIDJObj, kz_json:get_keys(PerDIDJObj)),
-    Used  = j5_channels:total_inbound_channels_per_did_rules(ToDID, AccountId),
-    lager:debug("inbound_channels_per_did_limit AccountId: ~p ToDid: ~p Used: ~p Limit: ~p"
-               ,[AccountId ,ToDID ,Used ,Limit]
-               ),
-    should_deny(Limit, Used).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% @end
-%%------------------------------------------------------------------------------
 -spec should_deny(integer(), integer()) -> boolean().
-should_deny(-1, _) -> 'false';
+should_deny(-1, _) -> false;
 should_deny(0, _) -> 'true';
 should_deny(Limit, Used) -> Used > Limit.
 

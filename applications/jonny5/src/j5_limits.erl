@@ -5,7 +5,7 @@
 %%%-----------------------------------------------------------------------------
 -module(j5_limits).
 
--export([get/1]).
+-export([get/1, get/2]).
 -export([fetch/1]).
 -export([cached/0]).
 -export([to_props/1]).
@@ -25,6 +25,7 @@
 -export([reserve_amount/1]).
 -export([max_postpay/1]).
 -export([authz_resource_types/1]).
+-export([owner_limits/1]).
 -export([inbound_channels_per_did_rules/1]).
 
 -include("jonny5.hrl").
@@ -49,6 +50,7 @@
                 ,soft_limit_inbound = 'false' :: boolean()
                 ,soft_limit_outbound = 'false' :: boolean()
                 ,authz_resource_types = [] :: list()
+		,owner_limits = kz_json:new() :: kz_json:object()
                 ,inbound_channels_per_did_rules = kz_json:new() :: kz_json:object()
                 }).
 
@@ -56,6 +58,7 @@
 -export_type([limits/0]).
 
 -define(LIMITS_KEY(AccountId), {'limits', AccountId}).
+-define(LIMITS_OWNER_KEY(AccountId, OwnerId), {'limits', AccountId, OwnerId}).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -69,23 +72,35 @@ get(Account) ->
         {'error', 'not_found'} -> fetch(AccountId)
     end.
 
+-spec get(kz_term:ne_binary(), kz_term:ne_binary()) -> limits().
+get(Account, OwnerId) ->
+    AccountId = kz_util:format_account_id(Account, 'raw'),
+    case kz_cache:peek_local(?CACHE_NAME, ?LIMITS_OWNER_KEY(AccountId, OwnerId)) of
+        {'ok', Limits} -> Limits;
+        {'error', 'not_found'} -> fetch(AccountId, OwnerId)
+    end.
+
 -spec fetch(kz_term:ne_binary()) -> limits().
-fetch(Account) ->
+fetch(Account) -> fetch(Account, 'undefined').
+
+-spec fetch(kz_term:ne_binary(), kz_term:ne_binary()) -> limits().
+fetch(Account, OwnerId) ->
     AccountId = kz_util:format_account_id(Account),
     AccountDb = kz_util:format_account_db(Account),
     JObj = kz_services_limits:fetch(AccountId),
     CacheOrigins = kz_json:get_ne_value(<<"pvt_cache_origins">>, JObj, []),
     case kz_term:is_empty(JObj) of
         'true' ->
-            create_limits(AccountId, AccountDb, kzd_limits:new(AccountId));
+            create_limits(AccountId, AccountDb, kzd_limits:new(AccountId), OwnerId);
         'false' when CacheOrigins =/= [] ->
-            Limits = create_limits(AccountId, AccountDb, kz_json:delete_key(<<"pvt_cache_origins">>,JObj)),
+            Limits = create_limits(AccountId, AccountDb, kz_json:delete_key(<<"pvt_cache_origins">>,JObj), OwnerId),
             CacheProps = [{'origin', CacheOrigins}],
-            kz_cache:store_local(?CACHE_NAME, ?LIMITS_KEY(AccountId), Limits, CacheProps),
+            kz_cache:store_local(?CACHE_NAME, ?LIMITS_OWNER_KEY(AccountId, OwnerId), Limits, CacheProps),
             Limits;
         'false' ->
-            create_limits(AccountId, AccountDb, kz_json:delete_key(<<"pvt_cache_origins">>,JObj))
+            create_limits(AccountId, AccountDb, kz_json:delete_key(<<"pvt_cache_origins">>,JObj), OwnerId)
     end.
+
 
 -spec cached() -> [limits()].
 cached() ->
@@ -225,6 +240,9 @@ max_postpay(#limits{max_postpay_amount=MaxPostpay}) -> MaxPostpay.
 -spec authz_resource_types(limits()) -> list().
 authz_resource_types(#limits{authz_resource_types=AuthzResourceTypes}) -> AuthzResourceTypes.
 
+-spec owner_limits(limits()) -> kz_json:object().
+owner_limits(#limits{owner_limits=JObj}) -> JObj.
+
 -spec inbound_channels_per_did_rules(limits()) -> kz_json:object().
 inbound_channels_per_did_rules(#limits{inbound_channels_per_did_rules=JObj}) -> JObj.
 
@@ -232,8 +250,9 @@ inbound_channels_per_did_rules(#limits{inbound_channels_per_did_rules=JObj}) -> 
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec create_limits(kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> limits().
-create_limits(AccountId, AccountDb, JObj) ->
+-spec create_limits(kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object(), kz_term:ne_binary()) -> limits().
+create_limits(AccountId, AccountDb, JObj, OwnerId) ->
+    lager:debug("creating limits for ~p / ~p", [AccountId, OwnerId]),
     #limits{account_id = AccountId
            ,account_db = AccountDb
            ,enabled = kzd_limits:enabled(JObj)
@@ -254,5 +273,6 @@ create_limits(AccountId, AccountDb, JObj) ->
            ,soft_limit_inbound = kzd_limits:soft_limit_inbound(JObj)
            ,soft_limit_outbound = kzd_limits:soft_limit_outbound(JObj)
            ,authz_resource_types = kzd_limits:authz_resource_types(JObj)
+           ,owner_limits = kzd_users:fetch_limits(AccountId, OwnerId)
            ,inbound_channels_per_did_rules = kzd_limits:inbound_channels_per_did_rules(JObj)
            }.

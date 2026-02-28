@@ -33,9 +33,9 @@ account_reconcile_cdr('undefined', _Request) ->
     lager:debug("no account id to reconcile cdr");
 account_reconcile_cdr(AccountId, Request) ->
     lager:debug("reconciling cdr for account ~s", [AccountId]),
-    Limits = j5_limits:get(AccountId),
+    Limits = j5_limits:get(AccountId, j5_request:owner_id(Request)),
     lager:debug("limits ~s : ~p", [AccountId, Limits]),
-    reconcile_cdr(Request, j5_limits:get(AccountId)).
+    reconcile_cdr(Request, Limits).
 
 %%------------------------------------------------------------------------------
 %% @doc

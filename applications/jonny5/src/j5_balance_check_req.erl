@@ -21,9 +21,17 @@ handle_req(ReqJObj, _Props) ->
     kapi_authz:publish_balance_check_resp(ServerId, Resp).
 
 -spec account_balance(kz_term:ne_binary(), kz_term:ne_binaries()) -> kz_term:ne_binaries().
-account_balance(AccountId, Acc) ->
-    Limits = j5_limits:get(AccountId),
-    [ {AccountId, j5_per_minute:maybe_credit_available(0, Limits)} | Acc ].
+account_balance(Account, Acc) ->
+    Resp = case binary:split(Account, <<"/">>) of
+        [AccountId, OwnerId] ->
+            lager:debug("checking user ~s credit for account ~s", [OwnerId, AccountId]),
+            {OwnerId, j5_per_minute:maybe_user_credit_available(AccountId, OwnerId)};
+        [AccountId] ->
+            Limits = j5_limits:get(AccountId),
+            lager:debug("checking account ~s credit", [AccountId]),
+            {AccountId, j5_per_minute:maybe_credit_available(Limits)}
+    end,
+    [Resp | Acc].
 
 build_resp(RespAccounts, ReqJObj) ->
     props:filter_undefined(

@@ -31,7 +31,8 @@
         ,clear_soft_limit/1
         ,soft_limit/1
         ]).
--export([billing/2
+-export([is_reseller_billing/2
+        ,billing/2
         ,account_billing/1
         ,reseller_billing/1
         ]).
@@ -49,7 +50,7 @@
 -export([classification/1]).
 -export([number/1]).
 -export([per_minute_cost/1]).
--export([call_cost/1, calculate_call/1]).
+-export([call_cost/1, calculate_call/1, calculate_call/2]).
 -export([ccvs/1]).
 -export([caller_network_address/1]).
 -export([rate/1
@@ -69,6 +70,7 @@
 -export([resource_id/1]).
 -export([account_trunk_usage/1]).
 -export([reseller_trunk_usage/1]).
+-export([owner_id/1]).
 
 -include("jonny5.hrl").
 
@@ -160,6 +162,7 @@ request_number(Number, CCVs) ->
                                    ], CCVs
                                   ) of
         'undefined' -> Number;
+        Number -> Number;
         Original ->
             lager:debug("using original number ~s instead of ~s", [Original, Number]),
             Original
@@ -174,22 +177,19 @@ ccvs(#request{request_ccvs=CCVs}) -> CCVs.
 %%------------------------------------------------------------------------------
 -spec to_jobj(request()) -> kz_json:object().
 to_jobj(Request) ->
-    Props =
-        props:filter_undefined(
-          [{<<"account_id">>, account_id(Request)}
-          ,{<<"reseller_id">>, reseller_id(Request)}
-          ,{<<"call_direction">>, call_direction(Request)}
-          ,{<<"call_id">>, call_id(Request)}
-          ,{<<"other_leg_call_id">>, other_leg_call_id(Request)}
-          ,{<<"answered_time">>, answered_time(Request)}
-          ,{<<"billing_seconds">>, billing_seconds(Request)}
-          ,{<<"from">>, from(Request)}
-          ,{<<"to">>, to(Request)}
-          ,{<<"number">>, ?MODULE:number(Request)}
-          ,{<<"classification">>, classification(Request)}
-          ]
-         ),
-    kz_json:from_list(Props).
+    kz_json:from_list([{<<"account_id">>, account_id(Request)}
+                      ,{<<"reseller_id">>, reseller_id(Request)}
+                      ,{<<"call_direction">>, call_direction(Request)}
+                      ,{<<"call_id">>, call_id(Request)}
+                      ,{<<"other_leg_call_id">>, other_leg_call_id(Request)}
+                      ,{<<"answered_time">>, answered_time(Request)}
+                      ,{<<"billing_seconds">>, billing_seconds(Request)}
+                      ,{<<"from">>, from(Request)}
+                      ,{<<"to">>, to(Request)}
+                      ,{<<"number">>, ?MODULE:number(Request)}
+                      ,{<<"classification">>, classification(Request)}
+                      ]
+                     ).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -201,10 +201,12 @@ authorize(Reason
                   ,account_id=AccountId
                   }=Request
          ,_Limits) ->
+    lager:debug("Authorized by account1 ~p", [Reason]),
     authorized_by_account(Reason, Request);
 authorize(Reason
          ,#request{reseller_id=ResellerId}=Request
          ,Limits) ->
+    lager:debug("Authorized by account2 ~p", [Reason]),
     case j5_limits:account_id(Limits) of
         ResellerId ->
             authorized_by_reseller(Reason, Request);
@@ -330,6 +332,13 @@ set_reseller_id(ResellerId, Request) ->
 
 -spec reseller_id(request()) -> kz_term:api_binary().
 reseller_id(#request{reseller_id=ResellerId}) -> ResellerId.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
+-spec is_reseller_billing(request(), j5_limits:limits()) -> boolean().
+is_reseller_billing(#request{reseller_id=ResellerId}, Limits) -> (j5_limits:account_id(Limits) =:= ResellerId).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -478,8 +487,14 @@ call_cost(#request{request_jobj=JObj}) ->
     kapps_call_util:call_cost(JObj).
 
 -spec calculate_call(request()) -> {non_neg_integer(), non_neg_integer()}.
-calculate_call(#request{request_jobj=JObj}) ->
-    kapps_call_util:calculate_call(JObj).
+calculate_call(Request) ->
+    lager:debug("calculate_call/1"),
+    calculate_call(Request, 'false').
+
+-spec calculate_call(request(), boolean()) -> {non_neg_integer(), non_neg_integer()}.
+calculate_call(#request{request_jobj=_JObj}, IsReseller) ->
+    lager:debug("Calculate call with reseller: ~p", [IsReseller]),
+    kapps_call_util:calculate_call(_JObj, IsReseller).
 
 -spec caller_network_address(request()) -> kz_term:api_binary().
 caller_network_address(#request{request_jobj=JObj}) ->
@@ -540,3 +555,7 @@ account_trunk_usage(#request{request_ccvs=CCVs}) ->
 -spec reseller_trunk_usage(request()) -> kz_term:api_binary().
 reseller_trunk_usage(#request{request_ccvs=CCVs}) ->
     kz_json:get_value(<<"Reseller-Trunk-Usage">>, CCVs).
+
+-spec owner_id(request()) -> kz_term:api_binary().
+owner_id(#request{request_ccvs=CCVs}) ->
+    kz_json:get_first_defined([<<"Calling-Owner-ID">>, <<"Owner-ID">>],  CCVs).

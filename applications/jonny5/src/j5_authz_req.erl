@@ -11,12 +11,13 @@
 
 -spec handle_req(kz_json:object(), kz_term:proplist()) -> any().
 handle_req(JObj, _) ->
-    'true' = kapi_authz:authz_req_v(JObj),
     kz_util:put_callid(JObj),
+    'true' = kapi_authz:authz_req_v(JObj),
     maybe_determine_account_id(j5_request:from_jobj(JObj)).
 
 -spec maybe_determine_account_id(j5_request:request()) -> 'ok'.
 maybe_determine_account_id(Request) ->
+    lager:debug("~p", [Request]),
     case j5_request:account_id(Request) of
         'undefined' -> determine_account_id(Request);
         _Else -> maybe_account_limited(Request)
@@ -147,12 +148,13 @@ should_authz_local(Request) ->
 -spec maybe_account_limited(j5_request:request()) -> 'ok'.
 maybe_account_limited(Request) ->
     AccountId = j5_request:account_id(Request),
-    Limits = j5_limits:get(AccountId),
+    OwnerId = j5_request:owner_id(Request),
+    Limits = j5_limits:get(AccountId, OwnerId),
     R = maybe_authorize(Request, Limits),
     case j5_request:is_authorized(R, Limits) of
         'true' -> maybe_determine_reseller_id(R);
         'false' ->
-            lager:debug("account ~s is not authorized to create this channel"
+            lager:info("account ~s is not authorized to create this channel"
                        ,[AccountId]
                        ),
             send_response(R)
@@ -178,7 +180,7 @@ maybe_reseller_limited(Request) ->
     ResellerId = j5_request:reseller_id(Request),
     case j5_request:account_id(Request) =:= ResellerId of
         'true' ->
-            lager:debug("channel belongs to reseller, ignoring reseller billing"),
+            lager:info("channel belongs to reseller, ignoring reseller billing"),
             send_response(
               j5_request:authorize_reseller(<<"limits_disabled">>, Request)
              );
@@ -210,7 +212,6 @@ maybe_authorize(Request, Limits) ->
 
 -spec maybe_authorize_exception(j5_request:request(), j5_limits:limits()) -> j5_request:request().
 maybe_authorize_exception(Request, Limits) ->
-    lager:debug("maybe_authorize_exceptions: ~p",[Request]),
     Routines = [fun maybe_authorize_mobile/2
                ,fun maybe_authorize_resource_type/2
                ,fun maybe_authorize_classification/2
@@ -229,10 +230,9 @@ maybe_authorize_exception(Request, Limits) ->
 -spec maybe_authorize_mobile(j5_request:request(), j5_limits:limits()) -> j5_request:request().
 maybe_authorize_mobile(Request, Limits) ->
     AuthType = kz_json:get_value(<<"Authorizing-Type">>, j5_request:ccvs(Request)),
-
     case AuthType =:= <<"mobile">> of
         'true' ->
-            lager:debug("allowing mobile call"),
+            lager:info("allowing mobile call"),
             j5_per_minute:authorize(Request, Limits);
         'false' -> Request
     end.
@@ -240,7 +240,7 @@ maybe_authorize_mobile(Request, Limits) ->
 -spec maybe_authorize_resource_type(kz_term:api_ne_binary(), j5_limits:limits()) -> j5_request:request().
 maybe_authorize_resource_type(Request, Limits) ->
     ResourceType = kz_json:get_value(<<"Resource-Type">>, j5_request:ccvs(Request)),
-
+    lager:debug("checking for resource type: ~p", [ResourceType]),
     case lists:member(ResourceType, j5_limits:authz_resource_types(Limits)) of
         'true' ->
             lager:debug("allowing ~s call", [ResourceType]),
@@ -363,6 +363,7 @@ send_response(Request) ->
              [{<<"Is-Authorized">>, kz_term:to_binary(j5_request:is_authorized(Request))}
              ,{<<"Account-ID">>, j5_request:account_id(Request)}
              ,{<<"Account-Billing">>, j5_request:account_billing(Request)}
+             ,{<<"Owner-ID">>, j5_request:owner_id(Request)}
              ,{<<"Reseller-ID">>, j5_request:reseller_id(Request)}
              ,{<<"Reseller-Billing">>, j5_request:reseller_billing(Request)}
              ,{<<"Call-Direction">>, j5_request:call_direction(Request)}
@@ -374,23 +375,9 @@ send_response(Request) ->
               | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
              ]),
 
-    maybe_publish_authz_resp(Request, ServerId, Resp).
-
--spec maybe_publish_authz_resp(j5_request:request(), kz_term:ne_binary(), kz_term:proplist()) -> 'ok'.
-maybe_publish_authz_resp(Request, ServerId, Resp) ->
-    maybe_publish_authz_resp(Request, ServerId, Resp, j5_channels:is_destroyed(j5_request:call_id(Request))).
-
--spec maybe_publish_authz_resp(j5_request:request(), kz_term:ne_binary(), kz_term:proplist(), boolean()) -> 'ok'.
-maybe_publish_authz_resp(_Request, _ServerId, _Resp, 'true') ->
-    lager:notice("the channel has already been destroyed, not sending authz response");
-maybe_publish_authz_resp(Request, ServerId, Resp, 'false') ->
     kapi_authz:publish_authz_resp(ServerId, Resp),
-    case j5_request:is_authorized(Request) of
-        'false' -> j5_util:send_system_alert(Request);
-        'true' ->
-            kapi_authz:broadcast_authz_resp(Resp),
-            j5_channels:authorized(kz_json:from_list(Resp))
-    end.
+    j5_util:maybe_send_system_alert(Request),
+    kapi_authz:broadcast_authz_resp(Resp).
 
 -spec trunk_usage(kz_term:ne_binary()) -> kz_term:ne_binary().
 trunk_usage(Id) ->
