@@ -10,7 +10,6 @@
 -module(cdr_channel_destroy).
 
 -export([handle_req/2]).
-
 -include("cdr.hrl").
 
 -define(IGNORED_APP, kapps_config:get(?CONFIG_CAT, <<"ignore_apps">>, [<<"milliwatt">>])).
@@ -85,6 +84,8 @@ prepare_and_save(AccountId, Timestamp, JObj) ->
 
     Routines = [fun update_ccvs/3
                ,fun set_doc_id/3
+               ,fun set_account_cost/3
+               ,fun set_reseller_cost/3
                ,fun set_recording_url/3
                ,fun set_call_priority/3
                ,fun maybe_set_e164_destination/3
@@ -156,6 +157,29 @@ set_doc_id(_AcctId, Timestamp, JObj) ->
 -spec set_call_priority(kz_term:api_ne_binary(), kz_time:gregorian_seconds(), kz_call_event:doc()) -> kz_call_event:doc().
 set_call_priority(_AccountId, _Timestamp, JObj) ->
     maybe_leak_ccv(JObj, <<"Call-Priority">>).
+
+
+-spec set_account_cost(kz_term:api_ne_binary(), kz_time:gregorian_seconds(), kz_call_event:doc()) -> kz_call_event:doc().
+set_account_cost(_AccountId, _Timestamp, JObj) ->
+    case kz_json:get_ne_value(?CCV(<<"Account-Billing">>), JObj) of
+        <<"per_minute">> ->
+            {_, CallCost} = kapps_call_util:calculate_call(JObj, 'false'),
+            lager:debug("set_account_cost: ~p",[CallCost]),
+            kz_json:set_value(<<"Billing-Cost">>, CallCost, JObj);
+        'undefined' -> JObj;
+        _ -> JObj
+    end.
+
+-spec set_reseller_cost(kz_term:api_ne_binary(), kz_time:gregorian_seconds(), kz_call_event:doc()) -> kz_call_event:doc().
+set_reseller_cost(_AccountId, _Timestamp, JObj) ->
+    case kz_json:get_ne_value(?CCV(<<"Reseller-Billing">>), JObj) of
+        <<"per_minute">> ->
+            {_, CallCost} = kapps_call_util:calculate_call(JObj, 'true'),
+            lager:debug("set_reseller_cost: ~p",[CallCost]),
+            kz_json:set_value(<<"Billing-Reseller-Cost">>, CallCost, JObj);
+        'undefined' -> JObj;
+        _ -> JObj
+    end.
 
 -spec set_recording_url(kz_term:api_ne_binary(), kz_time:gregorian_seconds(), kz_call_event:doc()) -> kz_call_event:doc().
 set_recording_url(_AccountId, _Timestamp, JObj) ->
