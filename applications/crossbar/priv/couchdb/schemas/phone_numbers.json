@@ -108,7 +108,7 @@
                 },
                 "region": {
                     "description": "The region (state) where the number is in service",
-                    "maxLength": 2,
+                    "maxLength": 32,
                     "minLength": 2,
                     "type": "string"
                 },
