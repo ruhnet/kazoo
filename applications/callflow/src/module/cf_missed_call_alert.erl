@@ -101,6 +101,7 @@ send_missed_alert(Call, Notify, Emails) ->
               ,{<<"To-User">>, kapps_call:to_user(Call)}
               ,{<<"To-Realm">>, kapps_call:to_realm(Call)}
               ,{<<"Account-ID">>, kapps_call:account_id(Call)}
+              ,{<<"Owner-ID">>, kapps_call:custom_channel_var(<<"Callee-Owner-ID">>, Call)}
               ,{<<"Caller-ID-Number">>, kapps_call:caller_id_number(Call)}
               ,{<<"Caller-ID-Name">>, kapps_call:caller_id_name(Call)}
               ,{<<"Timestamp">>, kz_time:now_s()}
