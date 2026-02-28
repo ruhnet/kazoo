@@ -1174,6 +1174,11 @@ create_sip_endpoint(Endpoint, Properties, Call) ->
           kz_json:object().
 create_sip_endpoint(Endpoint, Properties, #clid{}=Clid, Call) ->
     SIPJObj = kz_json:get_json_value(<<"sip">>, Endpoint),
+    SIPMethod = kz_json:get_ne_binary_value(<<"method">>, SIPJObj),
+    SIPToIP = case SIPMethod of
+        <<"ip">> -> kz_json:get_ne_binary_value(<<"ip">>, SIPJObj);
+        _ -> undefined
+    end,
     SIPEndpoint = kz_json:from_list(
                     props:filter_empty(
                       [{<<"Invite-Format">>, get_invite_format(SIPJObj)}
@@ -1181,7 +1186,7 @@ create_sip_endpoint(Endpoint, Properties, #clid{}=Clid, Call) ->
                       ,{<<"To-Username">>, get_to_username(SIPJObj)}
                       ,{<<"To-Realm">>, get_sip_realm(Endpoint, kapps_call:account_id(Call))}
                       ,{<<"To-DID">>, get_to_did(Endpoint, Call)}
-                      ,{<<"To-IP">>, kz_json:get_ne_binary_value(<<"ip">>, SIPJObj)}
+                      ,{<<"To-IP">>, SIPToIP}
                       ,{<<"SIP-Transport">>, get_sip_transport(SIPJObj)}
                       ,{<<"SIP-Interface">>, get_custom_sip_interface(SIPJObj)}
                       ,{<<"Route">>, kz_json:get_ne_binary_value(<<"route">>, SIPJObj)}
@@ -1620,9 +1625,12 @@ generate_ccvs(Endpoint, Call) ->
 
 -spec generate_ccvs(kz_json:object(), kapps_call:call(), kz_term:api_object()) -> kz_json:object().
 generate_ccvs(Endpoint, Call, CallFwd) ->
+    lager:debug("Call: ~p", [Call]),
     CCVFuns = [fun maybe_retain_caller_id/1
               ,fun maybe_set_endpoint_id/1
+              ,fun maybe_set_endpoint_resource/1
               ,fun maybe_set_owner_id/1
+              ,fun maybe_set_calling_owner_id/1
               ,fun maybe_set_account_id/1
               ,fun maybe_set_call_forward/1
               ,fun maybe_set_confirm_properties/1
@@ -1673,6 +1681,7 @@ maybe_set_endpoint_id({Endpoint, Call, CallFwd, CCVs}) ->
                             <<"mobile">> -> <<"mobile">>;
                             _ -> kz_doc:type(Endpoint)
                         end,
+	         lager:debug("maybe_set_endpoint_id"),
              kz_json:set_values([{<<"Authorizing-ID">>, EndpointId}
                                 ,{<<"Authorizing-Type">>, AuthType}
                                 ]
@@ -1681,12 +1690,42 @@ maybe_set_endpoint_id({Endpoint, Call, CallFwd, CCVs}) ->
      end
     }.
 
+-spec maybe_set_endpoint_resource(ccv_acc()) -> ccv_acc().
+    maybe_set_endpoint_resource({Endpoint, Call, CallFwd, CCVs}) ->
+        {Endpoint, Call, CallFwd
+         ,case kz_doc:id(Endpoint) of
+             'undefined' -> CCVs;
+             _EndpointId ->
+                ToNumber = get_to_did(Endpoint, Call),
+                case knm_converters:is_reconcilable(ToNumber) of
+                    'false' -> CCVs;
+                    'true' ->
+                        lager:debug("maybe_set_endpoint_resource ~p", [kapps_call:direction(Call)]),
+                        kz_json:set_values([{<<"Resource-ID">>, kz_json:get_value(<<"owner_id">>, Endpoint)}
+					   ,{<<"Resource-Type">>, <<"onnet-termination">>}
+                                            ]
+                                           ,CCVs
+                                           )
+                end
+         end
+        }.
+
 -spec maybe_set_owner_id(ccv_acc()) -> ccv_acc().
 maybe_set_owner_id({Endpoint, Call, CallFwd, CCVs}) ->
     {Endpoint, Call, CallFwd
     ,case kz_json:get_value(<<"owner_id">>, Endpoint) of
          'undefined' -> CCVs;
          OwnerId -> kz_json:set_value(<<"Owner-ID">>, OwnerId, CCVs)
+     end
+    }.
+
+-spec maybe_set_calling_owner_id(ccv_acc()) -> ccv_acc().
+maybe_set_calling_owner_id({Endpoint, Call, CallFwd, CCVs}) ->
+    lager:debug("~p", [kapps_call:owner_id(Call)]),
+    {Endpoint, Call, CallFwd
+    ,case kapps_call:owner_id(Call) of
+         'undefined' -> CCVs;
+         CallOwnerId -> kz_json:set_value(<<"Calling-Owner-ID">>, CallOwnerId, CCVs)
      end
     }.
 
