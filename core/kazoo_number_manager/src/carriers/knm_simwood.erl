@@ -43,7 +43,7 @@
 %%------------------------------------------------------------------------------
 -spec info() -> map().
 info() ->
-    #{?CARRIER_INFO_MAX_PREFIX => 3
+    #{?CARRIER_INFO_MAX_PREFIX => 5
      }.
 
 %%------------------------------------------------------------------------------
@@ -69,10 +69,14 @@ check_numbers(_Numbers) -> {'error', 'not_implemented'}.
 %%------------------------------------------------------------------------------
 -spec find_numbers(kz_term:ne_binary(), pos_integer(), knm_carriers:options()) ->
           {'ok', knm_number:knm_numbers()}.
+find_numbers(<<"+", Prefix/binary>>, Quantity, Options) ->
+    find_numbers(Prefix, Quantity, Options);
+find_numbers(<<"0", Prefix/binary>>, Quantity, Options) ->
+    find_numbers(Prefix, Quantity, Options);
 find_numbers(Prefix, Quantity, Options) ->
     URL = list_to_binary([?SW_NUMBER_URL, "/", ?SW_ACCOUNT_ID, <<"/available/standard/">>, sw_quantity(Quantity), "?pattern=", Prefix, "*"]),
     {'ok', Body} = query_simwood(URL, 'get'),
-    process_response(kz_json:decode(Body), Options).
+    process_response(lists:sublist(kz_json:decode(Body), Quantity), Options).
 
 %%------------------------------------------------------------------------------
 %% @doc Acquire a given number from Simwood.
@@ -96,13 +100,16 @@ acquire_number(Number) ->
 -spec disconnect_number(knm_number:knm_number()) ->
           knm_number:knm_number().
 disconnect_number(Number) ->
-    Num = to_simwood(Number),
-    URL = list_to_binary([?SW_NUMBER_URL, "/", ?SW_ACCOUNT_ID, <<"/allocated/">>, Num]),
-    case query_simwood(URL, 'delete') of
-        {'ok', _Body} -> Number;
-        {'error', Error} ->
-            knm_errors:by_carrier(?MODULE, Error, Num)
-    end.
+    lager:debug("Let's not disconnect this number and do it manually if we really want to (~p)", [Number]),
+    Number.
+
+%%    Num = to_simwood(Number),
+%%    URL = list_to_binary([?SW_NUMBER_URL, "/", ?SW_ACCOUNT_ID, <<"/allocated/">>, Num]),
+%%    case query_simwood(URL, 'delete') of
+%%        {'ok', _Body} -> Number;
+%%        {'error', Error} ->
+%%            knm_errors:by_carrier(?MODULE, Error, Num)
+%%    end.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -131,6 +138,13 @@ to_simwood(Number) ->
     case knm_phone_number:number(knm_number:phone_number(Number)) of
         <<$+, N/binary>> -> N;
         N -> N
+    end.
+
+-spec from_simwood(kz_term:ne_binary()) -> kz_term:ne_binary().
+from_simwood(N) ->
+    case N of
+        <<$+, _/binary>> -> N;
+        _ -> <<$+, N/binary>>
     end.
 
 %%------------------------------------------------------------------------------
@@ -181,4 +195,5 @@ response_jobj_to_number(JObj, QID) ->
     Num = list_to_binary([kz_json:get_binary_value(<<"country_code">>, JObj)
                          ,kz_json:get_binary_value(<<"number">>, JObj)
                          ]),
-    {QID, {Num, ?MODULE, ?NUMBER_STATE_DISCOVERY, JObj}}.
+    Num2 = knm_converters:normalize(from_simwood(Num)),
+    {QID, {Num2, ?MODULE, ?NUMBER_STATE_DISCOVERY, JObj}}.
