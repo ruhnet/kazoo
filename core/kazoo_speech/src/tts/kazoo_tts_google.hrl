@@ -79,6 +79,7 @@
         ,#voiceDesc{name = <<"en-AU-Wavenet-B">>, ssmlGender = <<"MALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-AU">>]}
         ,#voiceDesc{name = <<"en-AU-Wavenet-C">>, ssmlGender = <<"FEMALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-AU">>]}
         ,#voiceDesc{name = <<"en-AU-Wavenet-D">>, ssmlGender = <<"MALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-AU">>]}
+        ,#voiceDesc{name = <<"en-GB-Wavenet-F">>, ssmlGender = <<"FEMALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-GB">>]}
         ,#voiceDesc{name = <<"en-GB-Wavenet-A">>, ssmlGender = <<"FEMALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-GB">>]}
         ,#voiceDesc{name = <<"en-GB-Wavenet-B">>, ssmlGender = <<"MALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-GB">>]}
         ,#voiceDesc{name = <<"en-GB-Wavenet-C">>, ssmlGender = <<"FEMALE">>, naturalSampleRateHertz = 24000, languageCodes = [<<"en-GB">>]}
