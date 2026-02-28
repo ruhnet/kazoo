@@ -280,14 +280,19 @@ maybe_get_account_external_cid(Number, Name, Call, AccountDoc) ->
 maybe_get_account_default_number(Number, Name, Call, AccountDoc) ->
     DefaultNumber = kz_json:get_ne_value([<<"caller_id">>, <<"default">>, <<"number">>], AccountDoc),
     DefaultName = kz_json:get_ne_value([<<"caller_id">>, <<"default">>, <<"name">>], AccountDoc, Name),
-
     case is_valid_caller_id(DefaultNumber, Call) of
         'true' ->
             ?LOG_INFO("determined valid account default caller id is <~s> ~s", [DefaultName, DefaultNumber]),
             {DefaultNumber, DefaultName};
         'false' ->
             ?LOG_DEBUG("default number ~s not valid, trying assigned numbers", [DefaultNumber]),
-            maybe_get_assigned_number(Number, Name, Call)
+            case kz_json:is_true(<<"allow_get_assigned_number">>, AccountDoc, 'true') of
+                'true' ->  maybe_get_assigned_number(Number, Name, Call);
+                'false' ->
+                    SystemDefault = default_cid_number(kapps_call:account_id(Call)),
+                    ?LOG_WARNING("account does not allow getting assigned numbers; returning system default ~s", [SystemDefault]),
+                    {SystemDefault, Name}
+            end
     end.
 
 -spec maybe_get_assigned_number(kz_term:api_ne_binary(), kz_term:api_ne_binary(), kz_term:api_ne_binary()|kapps_call:call()) -> cid().
