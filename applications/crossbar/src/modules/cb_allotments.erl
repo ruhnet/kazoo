@@ -19,6 +19,7 @@
 -define(LIST_CONSUMED, <<"allotments/consumed">>).
 -define(PVT_TYPE, <<"limits">>).
 -define(CONSUMED, <<"consumed">>).
+-define(CONSUMEDLIST, <<"consumed_list">>).
 -define(PVT_ALLOTMENTS, <<"pvt_allotments">>).
 
 %%%=============================================================================
@@ -51,6 +52,8 @@ allowed_methods() ->
 
 -spec allowed_methods(path_token()) -> http_methods().
 allowed_methods(?CONSUMED) ->
+    [?HTTP_GET];
+allowed_methods(?CONSUMEDLIST) ->
     [?HTTP_GET].
 
 %%------------------------------------------------------------------------------
@@ -63,7 +66,8 @@ allowed_methods(?CONSUMED) ->
 resource_exists() -> 'true'.
 
 -spec resource_exists(path_token()) -> 'true'.
-resource_exists(?CONSUMED) -> 'true'.
+resource_exists(?CONSUMED) -> 'true';
+resource_exists(?CONSUMEDLIST) -> 'true'.
 
 %%------------------------------------------------------------------------------
 %% @doc This function determines if the parameters and content are correct
@@ -78,7 +82,9 @@ validate(Context) ->
 
 -spec validate(cb_context:context(), path_token()) -> cb_context:context().
 validate(Context, ?CONSUMED) ->
-    validate_consumed(Context, cb_context:req_verb(Context)).
+    validate_consumed(Context, cb_context:req_verb(Context));
+validate(Context, ?CONSUMEDLIST) ->
+    validate_list_consumed(Context, cb_context:req_verb(Context)).
 
 -spec validate_allotments(cb_context:context(), http_method()) -> cb_context:context().
 validate_allotments(Context, ?HTTP_GET) ->
@@ -90,6 +96,10 @@ validate_allotments(Context, ?HTTP_POST) ->
 validate_consumed(Context, ?HTTP_GET) ->
     C = load_allotments(Context),
     load_consumed(C, cb_context:resp_status(C)).
+
+-spec validate_list_consumed(cb_context:context(), http_method()) -> cb_context:context().
+validate_list_consumed(Context, ?HTTP_GET) ->
+    load_list_consumed(Context).
 
 -spec post(cb_context:context()) -> cb_context:context().
 post(Context) ->
@@ -131,6 +141,20 @@ load_consumed(Context, 'success') ->
     end;
 load_consumed(Context, _) -> Context.
 
+-spec load_list_consumed(cb_context:context()) -> cb_context:context().
+load_list_consumed(Context) ->
+    Options = [{'mapper', fun normalize_view_results/3}
+	      ,{'range_start_keymap', []}
+              ,{'range_end_keymap', [kz_json:new()]}
+              ,{'created_from', cycle_start(<<"monthly">>, kz_time:now_s())}
+              ,{'created_to', cycle_end(<<"monthly">>, kz_time:now_s())}
+              ,{'unchunkable', 'true'}
+	      ,{'reduce', 'false'}
+              ,'include_docs'
+              ],
+    lager:debug("Options: ~p", [Options]),
+    crossbar_view:load_modb(Context, ?LIST_CONSUMED, Options).
+
 -type mode() :: {kz_term:ne_binary(), kz_time:gregorian_seconds(), kz_time:gregorian_seconds()}.
 
 -spec foldl_consumed(kz_term:ne_binary(), kz_json:object(), CMA) -> CMA when CMA :: {cb_context:context(), mode(), kz_json:objects()}.
@@ -147,6 +171,7 @@ foldl_consumed(Classification, ValueJObj, {Context, {CycleMode, From0, To0}=Mode
               ,{'group_level', 1}
               ,{'unchunkable', 'true'}
               ],
+    lager:debug("Options: ~p", [Options]),
     C1 = crossbar_view:load_modb(Context, ?LIST_CONSUMED, Options),
     case cb_context:resp_status(C1) of
         'success' ->
@@ -154,6 +179,8 @@ foldl_consumed(Classification, ValueJObj, {Context, {CycleMode, From0, To0}=Mode
         CtxErr -> {CtxErr, Mode, Acc}
     end.
 
+-spec normalize_view_results(cb_context:context(), kzd_ledgers:doc(), kz_json:objects()) -> kz_json:objects().
+normalize_view_results(_Context, JObj, Acc) -> [kz_json:get_value(<<"doc">>, JObj) | Acc].
 
 -spec normalize_result(kz_term:api_ne_binary(), kz_time:gregorian_seconds(), kz_time:gregorian_seconds(), kz_json:object(), kz_json:objects())
                       -> kz_json:object().
@@ -175,6 +202,7 @@ normalize_result(Cycle, From, To, Acc, [Head|Tail]) ->
                    kz_json:set_value([Classification, <<"consumed">>], AccConsumed + Consumed, Acc)
            end,
     normalize_result(Cycle, From, To, Acc1, Tail).
+
 
 -spec get_consumed_mode(cb_context:context()) -> mode().
 get_consumed_mode(Context) ->
