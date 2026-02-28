@@ -19,7 +19,9 @@ handle_req(JObj, _Props) ->
     _ = kz_util:put_callid(JObj),
     case kz_json:get_value(<<"Method">>, JObj) of
         <<"reverse-lookup">> -> maybe_send_auth_resp(JObj);
-        _Else -> 'ok'
+        _Else ->
+            lager:debug("Other auth method: ~s", [_Else]),
+            'ok'
     end.
 
 %%------------------------------------------------------------------------------

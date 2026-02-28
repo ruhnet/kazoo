@@ -37,13 +37,29 @@ handle_req(JObj, _Props) ->
             lager:debug("trying to authenticate ~s@~s", [Username, Realm]),
             case lookup_auth_user(Username, Realm, JObj) of
                 {'ok', #auth_user{}=AuthUser} ->
-                    send_auth_resp(AuthUser, JObj);
+                    check_auth_ip(AuthUser, JObj);
                 {'error', _R} ->
                     lager:notice("auth failure for ~s@~s: ~p"
                                 ,[Username, Realm, _R]
                                 ),
                     send_auth_error(JObj)
             end
+    end.
+
+check_auth_ip(#auth_user{auth_ip = undefined} = AuthUser, JObj) ->
+        %% No IP restriction, just continue
+        send_auth_resp(AuthUser, JObj);
+
+check_auth_ip(#auth_user{auth_ip = AuthIP, username=Username} = AuthUser, JObj) ->
+    OrigIP = kz_json:get_value(<<"Orig-IP">>, JObj, undefined),
+    case OrigIP of
+        AuthIP ->
+            lager:debug("IP check success for user ~s: ~s", [Username, OrigIP]),
+            send_auth_resp(AuthUser, JObj);
+        _ ->
+            lager:notice("IP check failed for user ~s: expected ~s got ~p",
+                         [Username, AuthIP, OrigIP]),
+            send_auth_error(JObj)
     end.
 
 -spec send_auth_resp(auth_user(), kz_json:object()) -> 'ok'.
@@ -283,6 +299,7 @@ jobj_to_auth_user(JObj, Username, Realm, Req) ->
                          ,authorizing_type = get_auth_type(AuthDoc)
                          ,authorizing_id = kz_doc:id(JObj)
                          ,method = kz_term:to_lower_binary(Method)
+                         ,auth_ip = kz_json:get_value(<<"ip">>, AuthValue)
                          ,owner_id = kz_json:get_value(<<"owner_id">>, AuthDoc)
                          ,suppress_unregister_notifications = kz_json:is_true(<<"suppress_unregister_notifications">>, AuthDoc)
                          ,register_overwrite_notify = kz_json:is_true(<<"register_overwrite_notify">>, AuthDoc)

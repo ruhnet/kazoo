@@ -17,6 +17,7 @@
                    ,authorizing_type :: kz_term:api_binary()
                    ,authorizing_id :: kz_term:api_binary()
                    ,method :: kz_term:api_binary()
+                   ,auth_ip :: kz_term:api_binary()
                    ,owner_id :: kz_term:api_binary()
                    ,suppress_unregister_notifications = 'false' :: boolean()
                    ,register_overwrite_notify = 'false' :: boolean()
