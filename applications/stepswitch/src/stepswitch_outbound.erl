@@ -38,7 +38,16 @@ handle_req(OffnetJObj, _Props) ->
 handle_audio_req(OffnetReq) ->
     Number = stepswitch_util:get_outbound_destination(OffnetReq),
     lager:debug("received outbound audio resource request for ~s: ~p", [Number, OffnetReq]),
-    handle_audio_req(Number, OffnetReq).
+    case kz_json:get_ne_binary_value(<<"Force-Interaccount">>, OffnetReq) of
+		'undefined' -> handle_audio_req(Number, OffnetReq);
+		AccountId -> local_extension([{'pending_port', 'false'}
+					     ,{'local', 'false'}
+					     ,{'number', Number}
+					     ,{'account_id', AccountId}
+					     ,{'inbound_cnam', 'false'}
+					     ,{'force_outbound', 'false'}
+					     ], OffnetReq)
+    end.
 
 -spec handle_audio_req(kz_term:ne_binary(), kapi_offnet_resource:req()) -> any().
 handle_audio_req(Number, OffnetReq) ->
@@ -88,12 +97,16 @@ maybe_force_originate_outbound(Props, OffnetReq) ->
 %%------------------------------------------------------------------------------
 -spec maybe_force_outbound(knm_number_options:extra_options(), kapi_offnet_resource:req()) -> any().
 maybe_force_outbound(Props, OffnetReq) ->
+    lager:debug("Props: ~p", [Props]),
+    lager:debug("OffnetReq: ~p", [OffnetReq]),
     case knm_number_options:should_force_outbound(Props)
         orelse kapi_offnet_resource:force_outbound(OffnetReq, 'false')
         orelse kapi_offnet_resource:hunt_account_id(OffnetReq) /= 'undefined'
     of
-        'false' -> local_extension(Props, OffnetReq);
-        'true' -> maybe_bridge(knm_number_options:number(Props), OffnetReq)
+        'false' -> lager:debug("Force outbound: FALSE", []),
+		   local_extension(Props, OffnetReq);
+        'true' -> lager:debug("Force outbound: TRUE", []),
+		  maybe_bridge(knm_number_options:number(Props), OffnetReq)
     end.
 
 %%------------------------------------------------------------------------------
