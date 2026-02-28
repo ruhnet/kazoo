@@ -38,12 +38,15 @@
 
 -define(CB_LIST, <<"cdrs/crossbar_listing">>).
 -define(CB_LIST_BY_USER, <<"cdrs/listing_by_owner">>).
+-define(CB_LIST_BY_RESOURCE, <<"cdrs/listing_by_resource">>).
 -define(CB_INTERACTION_LIST, <<"interactions/interaction_listing">>).
 -define(CB_INTERACTION_LIST_BY_USER, <<"interactions/interaction_listing_by_owner">>).
 -define(CB_INTERACTION_LIST_BY_ID, <<"interactions/interaction_listing_by_id">>).
+-define(CB_INTERACTION_LIST_BY_RESOURCE, <<"interactions/interaction_listing_by_resource">>).
 -define(CB_SUMMARY_VIEW, <<"cdrs/summarize_cdrs">>).
 -define(CB_SUMMARY_LIST, <<"format_summary">>).
 
+-define(PATH_RESOURCE, <<"resource">>).
 -define(PATH_INTERACTION, <<"interaction">>).
 -define(PATH_LEGS, <<"legs">>).
 -define(PATH_SUMMARY, <<"summary">>).
@@ -61,10 +64,12 @@
         ,{<<"duration_seconds">>, fun col_duration_seconds/3}
         ,{<<"billing_seconds">>, fun col_billing_seconds/3}
         ,{<<"timestamp">>, fun col_timestamp/3}
+        ,{<<"interaction_time">>, fun col_interaction_time/3}
         ,{<<"hangup_cause">>, fun col_hangup_cause/3}
         ,{<<"disposition">>, fun col_disposition/3}
         ,{<<"other_leg_call_id">>, fun col_other_leg_call_id/3}
         ,{<<"owner_id">>, fun col_owner_id/3}
+        ,{<<"calling_owner_id">>, fun col_calling_owner_id/3}
         ,{<<"to">>, fun col_to/3}
         ,{<<"from">>, fun col_from/3}
         ,{<<"direction">>, fun col_call_direction/3}
@@ -88,6 +93,9 @@
         ,{<<"media_server">>, fun col_media_server/3}
         ,{<<"call_priority">>, fun col_call_priority/3}
         ,{<<"interaction_id">>, fun col_interaction_id/3}
+        ,{<<"created_time">>, fun col_created_time/3}
+        ,{<<"resource_id">>, fun col_resource_id/3}
+        ,{<<"resource_type">>, fun col_resource_type/3}
         ]).
 
 -define(COLUMNS_RESELLER
@@ -135,9 +143,17 @@ to_response(Context, _, [{<<"cdrs">>, []}, {?KZ_ACCOUNTS_DB, _}|_]) ->
     Context;
 to_response(Context, _, [{<<"cdrs">>, []}, {<<"users">>, _}|_]) ->
     Context;
+to_response(Context, _, [{<<"cdrs">>, []}, {<<"resources">>}|_]) ->
+    Context;
+to_response(Context, _, [{<<"cdrs">>, []}, {<<"resources">>, _}|_]) ->
+    Context;
+to_response(Context, RespType, [{<<"cdrs">>, [?PATH_RESOURCE]}, {?KZ_ACCOUNTS_DB, _}|_]) ->
+    load_chunked_cdrs(Context, RespType);
 to_response(Context, RespType, [{<<"cdrs">>, [?PATH_INTERACTION]}, {?KZ_ACCOUNTS_DB, _}|_]) ->
     load_chunked_cdrs(Context, RespType);
 to_response(Context, RespType, [{<<"cdrs">>, [?PATH_INTERACTION]}, {<<"users">>, _}|_]) ->
+    load_chunked_cdrs(Context, RespType);
+to_response(Context, RespType, [{<<"cdrs">>, [?PATH_INTERACTION]}, {<<"resources">>, _}|_]) ->
     load_chunked_cdrs(Context, RespType);
 to_response(Context, _, _) ->
     Context.
@@ -155,6 +171,8 @@ allowed_methods() ->
     [?HTTP_GET].
 
 -spec allowed_methods(path_token()) -> http_methods().
+allowed_methods(?PATH_RESOURCE) ->
+    [?HTTP_GET];
 allowed_methods(?PATH_INTERACTION) ->
     [?HTTP_GET];
 allowed_methods(?PATH_SUMMARY) ->
@@ -218,6 +236,8 @@ validate(Context) ->
     validate_utc_offset(Context).
 
 -spec validate(cb_context:context(), path_token()) -> cb_context:context().
+validate(Context, ?PATH_RESOURCE) ->
+    validate_chunk_view(Context);
 validate(Context, ?PATH_INTERACTION) ->
     validate_chunk_view(Context);
 validate(Context, ?PATH_SUMMARY) ->
@@ -357,6 +377,41 @@ get_view_options([{<<"cdrs">>, []}, {<<"users">>, [OwnerId]}|_]) ->
      ,'include_docs'
      ]
     };
+get_view_options([{<<"cdrs">>, []}, {<<"resources">>}|_]) ->
+    {?CB_LIST_BY_RESOURCE
+    ,[{'range_start_keymap', []}
+     ,{'range_end_keymap', fun(Ts) -> [kz_json:new(), Ts, kz_json:new()] end}
+     ,{'mapper', fun cdrs_listing_mapper/3}
+     ,'include_docs'
+     ]
+    };
+get_view_options([{<<"cdrs">>, []}, {<<"resources">>, [<<"any">>]}|_]) ->
+    {?CB_LIST_BY_RESOURCE
+    ,[{'range_start_keymap', []}
+     ,{'range_end_keymap', fun(Ts) -> [kz_json:new(), Ts, kz_json:new()] end}
+     ,{'mapper', fun cdrs_listing_mapper/3}
+     ,'include_docs'
+     ]
+    };
+get_view_options([{<<"cdrs">>, []}, {<<"resources">>, [ResourceId]}|_]) ->
+    {?CB_LIST_BY_RESOURCE
+    ,[{'range_start_keymap', [ResourceId]}
+     ,{'range_end_keymap', fun(Ts) -> [ResourceId, Ts, kz_json:new()] end}
+     ,{'mapper', fun cdrs_listing_mapper/3}
+     ,'include_docs'
+     ]
+    };
+get_view_options([{<<"cdrs">>, [?PATH_RESOURCE]}, {?KZ_ACCOUNTS_DB, _}|_]) ->
+    {?CB_LIST_BY_RESOURCE
+       ,props:filter_undefined(
+          [{'range_start_keymap', []}
+          ,{'range_end_keymap', fun(Ts) -> [kz_json:new(), Ts, kz_json:new()] end}
+          ,{'mapper', fun cdrs_listing_mapper/3}
+           ,'include_docs'
+           | maybe_add_stale_to_options(?STALE_CDR)
+          ])
+       };
+
 get_view_options([{<<"cdrs">>, [?PATH_INTERACTION]}, {?KZ_ACCOUNTS_DB, _}|_]) ->
     {?CB_INTERACTION_LIST
     ,props:filter_undefined(
@@ -452,15 +507,15 @@ normalize_cdr(Context, <<"json">>, Result) ->
     JObj = kz_json:get_json_value(<<"doc">>, Result),
     Duration = kzd_cdrs:duration_seconds(JObj, 0),
     Timestamp = kzd_cdrs:timestamp(JObj, 0) - Duration,
-
-    MappedRows = [{K, F(JObj, Timestamp, Context)} || {K, F} <- json_rows(Context)],
+    CallInteraction = kzd_cdrs:interaction_time(JObj, Timestamp),
+    MappedRows = [{K, F(JObj, CallInteraction, Context)} || {K, F} <- json_rows(Context)],
     maybe_filter_empties(MappedRows, kapps_config:is_true(?MOD_CONFIG_CAT, <<"should_filter_empty_strings">>, 'false'));
 normalize_cdr(Context, <<"csv">>, Result) ->
     JObj = kz_json:get_json_value(<<"doc">>, Result),
     Duration = kzd_cdrs:duration_seconds(JObj, 0),
     Timestamp = kzd_cdrs:timestamp(JObj, 0) - Duration,
-
-    <<(kz_binary:join([F(JObj, Timestamp, Context) || {_, F} <- csv_rows(Context)], <<",">>))/binary, "\r\n">>.
+    CallInteraction = kzd_cdrs:interaction_time(JObj, Timestamp),
+    <<(kz_binary:join([F(JObj, CallInteraction, Context) || {_, F} <- csv_rows(Context)], <<",">>))/binary, "\r\n">>.
 
 -spec maybe_filter_empties(kz_term:proplist(), boolean()) -> kz_json:objects().
 maybe_filter_empties(Rows, 'true') ->
@@ -515,10 +570,13 @@ col_callee_id_name(JObj, _Timestamp, _Context) -> kzd_cdrs:callee_id_name(JObj, 
 col_duration_seconds(JObj, _Timestamp, _Context) -> kzd_cdrs:duration_seconds(JObj, <<>>).
 col_billing_seconds(JObj, _Timestamp, _Context) -> kzd_cdrs:billing_seconds(JObj, <<>>).
 col_timestamp(_JObj, Timestamp, _Context) -> kz_term:to_binary(Timestamp).
+col_created_time(JObj, _Timestamp, _Context) -> kz_doc:created(JObj, <<>>).
+col_interaction_time(JObj, _Timestamp, _Context) -> kzd_cdrs:interaction_time(JObj, <<>>).
 col_hangup_cause(JObj, _Timestamp, _Context) -> kzd_cdrs:hangup_cause(JObj, <<>>).
 col_disposition(JObj, _Timestamp, _Context) -> kzd_cdrs:disposition(JObj, <<>>).
 col_other_leg_call_id(JObj, _Timestamp, _Context) -> kzd_cdrs:other_leg_call_id(JObj, <<>>).
 col_owner_id(JObj, _Timestamp, _Context) -> kz_json:get_value([?KEY_CCV, <<"owner_id">>], JObj, <<>>).
+col_calling_owner_id(JObj, _Timestamp, _Context) -> kz_json:get_value([?KEY_CCV, <<"calling_owner_id">>], JObj, <<>>).
 col_to(JObj, _Timestamp, _Context) -> kzd_cdrs:to(JObj, <<>>).
 col_from(JObj, _Timestamp, _Context) -> kzd_cdrs:from(JObj, <<>>).
 col_call_direction(JObj, _Timestamp, _Context) -> kzd_cdrs:call_direction(JObj, <<>>).
@@ -531,7 +589,7 @@ col_authorizing_id(JObj, _Timestamp, _Context) ->
         {A, A} -> <<>>;
         {_A, B} -> B
     end.
-col_customer_cost(JObj, _Timestamp, _Context) -> kz_term:to_binary(customer_cost(JObj)).
+col_customer_cost(JObj, _Timestamp, _Context) -> kz_term:to_binary(kzd_cdrs:billing_cost(JObj, customer_cost(JObj))).
 
 col_dialed_number(JObj, _Timestamp, _Context) -> dialed_number(JObj).
 col_calling_from(JObj, _Timestamp, _Context) -> calling_from(JObj).
@@ -550,8 +608,10 @@ col_recording_url(JObj, _Timestamp, _Context) -> kz_json:get_value([<<"recording
 col_media_recordings(JObj, _Timestamp, _Context) -> format_recordings(JObj).
 col_media_server(JObj, _Timestamp, _Context) -> kzd_cdrs:media_server(JObj, <<>>).
 col_call_priority(JObj, _Timestamp, _Context) -> kz_json:get_value([?KEY_CCV, <<"call_priority">>], JObj, <<>>).
+col_resource_id(JObj, _Timestamp, _Context) -> kz_json:get_value([?KEY_CCV, <<"resource_id">>], JObj, <<>>).
+col_resource_type(JObj, _Timestamp, _Context) -> kz_json:get_value([?KEY_CCV, <<"resource_type">>], JObj, <<>>).
 
-col_reseller_cost(JObj, _Timestamp, _Context) -> kz_term:to_binary(reseller_cost(JObj)).
+col_reseller_cost(JObj, _Timestamp, _Context) -> kz_term:to_binary(kzd_cdrs:billing_reseller_cost(JObj, reseller_cost(JObj))).
 col_reseller_call_type(JObj, _Timestamp, _Context) -> kz_json:get_value([?KEY_CCV, <<"reseller_billing">>], JObj, <<>>).
 
 col_interaction_id(JObj, _Timestamp, _Context) -> kzd_cdrs:interaction_id(JObj, <<>>).
@@ -575,6 +635,7 @@ interaction_path(Context) ->
     case cb_context:req_nouns(Context) of
         [{<<"cdrs">>, [?PATH_INTERACTION]}, {?KZ_ACCOUNTS_DB, _}|_] -> 'account';
         [{<<"cdrs">>, [?PATH_INTERACTION]}, {<<"users">>, _}|_] -> 'user';
+        [{<<"cdrs">>, [?PATH_INTERACTION]}, {<<"resources">>, _}|_] -> 'user';
         _Else -> 'undefined'
     end.
 
@@ -622,7 +683,9 @@ calling_from(JObj) ->
 customer_cost(JObj) ->
     CCVs = kzd_cdrs:custom_channel_vars(JObj, kz_json:new()),
     case kz_json:get_ne_binary_value(<<"account_billing">>, CCVs) of
-        <<"per_minute">> -> kapps_call_util:call_cost(JObj);
+        <<"per_minute">> ->
+            {_Seconds, Cost} = kapps_call_util:calculate_call(JObj, false),
+            Cost;
         _ -> 0
     end.
 
@@ -631,7 +694,9 @@ reseller_cost(JObj) ->
     CCVs = kzd_cdrs:custom_channel_vars(JObj, kz_json:new()),
 
     case kz_json:get_ne_binary_value([<<"reseller_billing">>], CCVs) of
-        <<"per_minute">> -> kapps_call_util:call_cost(JObj);
+        <<"per_minute">> ->
+            {_Seconds, Cost} = kapps_call_util:calculate_call(JObj, true),
+            Cost;
         _ -> 0
     end.
 
