@@ -149,9 +149,10 @@ read(Context, CallId) ->
             lager:debug("no channel resp for ~s", [CallId]),
             crossbar_util:response_bad_identifier(CallId, Context);
         {'ok', StatusJObjs} ->
-            case find_channel(cb_context:account_id(Context), CallId, StatusJObjs) of
+            AccountId = get_account_id(Context),
+            case find_channel(AccountId, CallId, StatusJObjs) of
                 'undefined' ->
-                    lager:warning("trying to get info about a channel ~s not in the account ~s", [CallId, cb_context:account_id(Context)]),
+                    lager:warning("trying to get info about a channel ~s not in the account ~s", [CallId, AccountId]),
                     crossbar_util:response_bad_identifier(CallId, Context);
                 Channel ->
                     lager:debug("found our channel ~s: ~p", [CallId, Channel]),
@@ -183,6 +184,12 @@ channels_query(CallId) ->
 
 -spec find_channel(kz_term:ne_binary(), kz_term:ne_binary(), kz_json:objects()) -> kz_term:api_object().
 find_channel(_AccountId, _CallId, []) -> 'undefined';
+find_channel(<<"all">>, CallId, [StatusJObj|JObjs]) ->
+    lager:debug("find channel all ~s", [CallId]),
+    case kz_json:get_value([<<"Channels">>, CallId], StatusJObj) of
+        'undefined' -> find_channel(<<"all">>, CallId, JObjs);
+        Channel -> Channel
+    end;
 find_channel(AccountId, CallId, [StatusJObj|JObjs]) ->
     Channel = kz_json:get_value([<<"Channels">>, CallId], StatusJObj),
     case kz_json:get_value(<<"Account-ID">>, Channel) of
@@ -395,7 +402,7 @@ merge_user_channels_fold(Channel, D) ->
 
 -spec delete_keys(kz_json:object()) -> kz_json:object().
 delete_keys(JObj) ->
-    kz_json:delete_keys([<<"account_id">>
+    kz_json:delete_keys([<<"account_id_">>
                         ,<<"bridge_id">>
                         ,<<"context">>
                         ,<<"dialplan">>
@@ -403,7 +410,7 @@ delete_keys(JObj) ->
                         ,<<"node">>
                         ,<<"precedence">>
                         ,<<"profile">>
-                        ,<<"realm">>
+                        ,<<"realm_">>
                         ,<<"app_name">>
                         ,<<"app_version">>
                         ,<<"event_category">>
