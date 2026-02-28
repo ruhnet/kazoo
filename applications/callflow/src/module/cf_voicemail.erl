@@ -26,6 +26,7 @@
 
 -export([handle/2]).
 -export([new_message/4]).
+-export([get_user_mailbox_doc/3]).
 
 -include("callflow.hrl").
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
@@ -230,6 +231,9 @@ handle(Data, Call) ->
                     cf_exe:branch(Flow, Call);
                 {'error', 'channel_hungup'} ->
                     lager:info("channel has hungup, stopping the compose"),
+                    cf_exe:stop(Call);
+		_E ->
+      		    lager:info("other error ~p", [_E]),
                     cf_exe:stop(Call)
             end;
         <<"check">> ->
@@ -1222,10 +1226,10 @@ maybe_forward(AttachmentName, Message, SourceBoxId, DestinationBox, Call, Msg, {
     Length = kz_json:get_integer_value(<<"Length">>, Msg, 0),
     forward_message(AttachmentName, Length, Message, SourceBoxId, DestinationBox, Call).
 
-%%------------------------------------------------------------------------------ 
-%% @doc Starts a task to asynchronously forward a message to another vmbox and 
-%% plays a confirmation of the operation. 
-%% @end 
+%%------------------------------------------------------------------------------
+%% @doc Starts a task to asynchronously forward a message to another vmbox and
+%% plays a confirmation of the operation.
+%% @end
 %%------------------------------------------------------------------------------
 -spec forward_message(kz_term:api_ne_binary(), non_neg_integer(), kz_json:object(), kz_term:ne_binary(), mailbox(), kapps_call:call()) -> 'ok'.
 forward_message(AttachmentName, Length, Message, SourceBoxId, DestinationBox, Call) ->
@@ -1722,10 +1726,10 @@ change_pin(#mailbox{mailbox_id=Id
     lager:info("requesting new mailbox pin number (loop ~p)", [Loop]),
     try
         {'ok', Pin} = get_new_pin(Interdigit, Call),
-        lager:info("collected first pin"),
+        lager:info("collected first pin ~p", [Pin]),
 
         {'ok', Pin} = confirm_new_pin(Interdigit, Call),
-        lager:info("collected second pin"),
+        lager:info("collected second pin ~p", [Pin]),
 
         Pin =:= <<>>
             andalso throw('pin_empty'),
@@ -1786,6 +1790,7 @@ validate_box_schema(JObj) ->
         {'ok', _}=OK -> OK;
         {'error', _Errors} ->
             lager:debug("failed to validate vmbox schema: ~p", [_Errors]),
+            lager:debug("~p", [JObj]),
             {'error', 'invalid_pin'}
     end.
 
@@ -1927,7 +1932,7 @@ get_mailbox_profile(Data, Call) ->
                     ,play_greeting_intro =
                          kz_json:is_true(<<"play_greeting_intro">>, MailboxJObj, Default#mailbox.play_greeting_intro)
                     ,use_person_not_available =
-                         kz_json:is_true(<<"use_person_not_available">>, MailboxJObj, Default#mailbox.use_person_not_available)
+                         kz_term:is_true(kz_json:find(<<"use_person_not_available">>, [MailboxJObj, Data], Default#mailbox.use_person_not_available))
                     ,not_configurable=
                          kz_json:is_true(<<"not_configurable">>, MailboxJObj, 'false')
                     ,account_db = AccountDb
@@ -2055,7 +2060,7 @@ get_mailbox_doc(Db, Id, Data, Call) ->
             case kz_datamgr:get_single_result(Db, <<"attributes/mailbox_number">>, Opts) of
                 {'ok', JObj} ->
                     {'ok', kz_json:get_json_value(<<"doc">>, JObj, kz_json:new())};
-                E -> E
+                _E -> get_user_mailbox_doc(Data, Call)
             end;
         'true' ->
             get_user_mailbox_doc(Data, Call)
@@ -2096,10 +2101,44 @@ get_user_mailbox_doc(Data, Call, OwnerId) ->
                        ,[OwnerId, kz_doc:id(Box)]
                        ),
             {'ok', Box};
+        Boxes when SingleMailboxLogin ->
+            lager:debug("found ~p vmboxes assigned to owner ~s",
+                        [length(Boxes), OwnerId]),
+            maybe_match_default(Boxes, Data, Call, OwnerId);
         Boxes ->
             lager:debug("found ~p vmboxes assigned to owner ~s",
                         [length(Boxes), OwnerId]),
             maybe_match_callerid(Boxes,Data, Call)
+    end.
+
+-spec maybe_match_default(kz_json:objects(), kz_json:object(), kapps_call:call(), kz_term:api_binary()) ->
+      {'ok', kz_json:object()} |
+      {'error', any()}.
+maybe_match_default(Boxes, Data, Call, OwnerId) ->
+    AccountDb = kapps_call:account_db(Call),
+    case kz_datamgr:open_cache_doc(AccountDb, OwnerId) of
+        {'ok', OwnerJObj} ->
+            DefaultBox = kz_json:get_ne_binary_value(<<"vm_default_vbox">>, OwnerJObj),
+            try_match_default(Boxes, DefaultBox);
+        _ -> maybe_match_callerid(Boxes, Data, Call)
+    end.
+
+-spec try_match_default(kz_json:objects(), kz_term:ne_binary()) ->
+              {'ok', kz_json:object()} |
+              {'error', any()}.
+try_match_default([], _DefaultBox) ->
+    lager:debug("no voicemail box found for owner with matching default box ~s", [_DefaultBox]),
+    {'error', "request voicemail box number"};
+try_match_default(_, 'undefined') ->
+      lager:debug("no default voicemail box set for owner"),
+      {'error', "request voicemail box number"};
+try_match_default([Box|Boxes], DefaultBox) ->
+    case kz_doc:id(Box) of
+        DefaultBox ->
+            lager:debug("found default mailbox ~s", [DefaultBox]),
+            {'ok', Box};
+        _Mailbox ->
+            try_match_default(Boxes, DefaultBox)
     end.
 
 -spec maybe_match_callerid(kz_json:objects(), kz_json:object(), kapps_call:call()) ->
