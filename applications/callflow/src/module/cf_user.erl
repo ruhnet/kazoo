@@ -40,7 +40,9 @@ handle(Data, Call) ->
         {'ok', _} ->
             lager:info("completed successful bridge to user"),
             cf_exe:stop(Call);
-        {'fail', _}=Reason -> maybe_handle_bridge_failure(Reason, Call);
+        {'fail', _}=Reason -> 
+	    lager:info("failed bridging to user: ~p", [Reason]),
+	    maybe_handle_bridge_failure(Reason, Call);
         {'error', _R} ->
             lager:info("error bridging to user: ~p", [_R]),
             cf_exe:continue(Call)
