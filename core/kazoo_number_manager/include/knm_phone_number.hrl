@@ -5,7 +5,7 @@
 
 -define(KNM_DEFAULT_AUTH_BY, <<"system">>).
 
--define(KNM_DEFAULT_COUNTRY, <<"US">>).
+-define(KNM_DEFAULT_COUNTRY, <<"GB">>).
 
 -type knm_phone_number_return() ::
         {'ok', knm_phone_number:knm_phone_number()} |

@@ -7,9 +7,11 @@
 
 -export([available_units/1
         ,available_units/2
+        ,available_units/3
         ]).
 -export([available_dollars/1
         ,available_dollars/2
+        ,available_dollars/3
         ]).
 -export([past_available_units/1
         ,past_available_units/2
@@ -59,6 +61,13 @@ available_units(Account, Default) ->
             AvailableUnits
     end.
 
+-spec available_units(kz_term:ne_binary(), kz_term:ne_binary(), Default) -> units() | Default.
+available_units(Account, Owner, Default) ->
+    case kz_ledgers:total_owners(Account, Owner) of
+        {'error', _Reason} -> Default;
+        {'ok', AvailableUnits} ->
+            AvailableUnits
+    end.
 %%------------------------------------------------------------------------------
 %% @doc
 %% @end
@@ -79,6 +88,13 @@ available_dollars(Account, Default) ->
             AvailableDollars
     end.
 
+-spec available_dollars(kz_term:ne_binary(), kz_term:ne_binary(), Default) -> units() | Default.
+available_dollars(Account, Owner, Default) ->
+    case available_units(Account, Owner, Default) of
+        {'error', _Reason} -> Default;
+        {'ok', Units} ->
+            {'ok', units_to_dollars(Units)}
+    end.
 %%------------------------------------------------------------------------------
 %% @doc
 %% @end
@@ -173,7 +189,7 @@ units_to_dollars(Units) ->
 %%------------------------------------------------------------------------------
 -spec pretty_print_dollars(dollars()) -> kz_term:ne_binary().
 pretty_print_dollars(Amount) ->
-    kz_term:to_binary(io_lib:format("$~.2f", [Amount])).
+    kz_term:to_binary(io_lib:format("£~.2f", [Amount])).
 
 %%------------------------------------------------------------------------------
 %% @doc
