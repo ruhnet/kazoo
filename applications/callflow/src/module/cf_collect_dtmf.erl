@@ -50,30 +50,33 @@ handle(Data, Call) ->
             'undefined' -> <<>>;
             <<_/binary>> = D -> D
         end,
-    AlreadyCollected1 = truncate_after_terminator(AlreadyCollected, terminators(Data)),
+    lager:debug("Already collected pre: ~p (~p)", [AlreadyCollected, terminators(Data)]),
 
+    AlreadyCollected1 = list_to_binary(lists:filter(fun(T) -> lists:member(<<T>>, valid_digits(Data)) end
+                                    ,binary_to_list(truncate_after_terminator(AlreadyCollected, terminators(Data)))
+                                    )),
+    lager:debug("Already collected: ~p (~s)", [AlreadyCollected1, collection_name(Data)]),
     maybe_collect_more_digits(Data, kapps_call:set_dtmf_collection('undefined', Call), AlreadyCollected1).
 
 -spec maybe_collect_more_digits(kz_json:object(), kapps_call:call(), binary()) -> 'ok'.
 maybe_collect_more_digits(Data, Call, AlreadyCollected) ->
     AlreadyCollectedSize = byte_size(AlreadyCollected),
     MaxDigits = max_digits(Data),
-
-    maybe_collect_more_digits(Data, Call, AlreadyCollected, AlreadyCollectedSize, MaxDigits),
-    cf_exe:continue(Call).
+    maybe_collect_more_digits(Data, Call, AlreadyCollected, AlreadyCollectedSize, MaxDigits).
 
 -spec maybe_collect_more_digits(kz_json:object(), kapps_call:call(), binary(), non_neg_integer(), pos_integer()) -> 'ok'.
 maybe_collect_more_digits(Data, Call, AlreadyCollected, ACS, Max) when ACS >= Max ->
     lager:debug("early DTMF met collection criteria, not collecting any more digits"),
     <<Head:Max/binary, _/binary>> = AlreadyCollected,
     CollectionName = collection_name(Data),
-
-    cf_exe:set_call(kapps_call:set_dtmf_collection(Head, CollectionName, Call));
+    handle_digits(Call, Head, CollectionName);
 maybe_collect_more_digits(Data, Call, AlreadyCollected, ACS, Max) ->
     collect_more_digits(Data, Call, AlreadyCollected, Max-ACS).
 
 -spec collect_more_digits(kz_json:object(), kapps_call:call(), binary(), pos_integer()) -> 'ok'.
 collect_more_digits(Data, Call, AlreadyCollected, MaxDigits) ->
+    lager:debug("collecting more digits max(~p)", [MaxDigits]),
+    CollectionName = collection_name(Data),
     case kapps_call_command:collect_digits(MaxDigits
                                           ,collect_timeout(Data)
                                           ,interdigit(Data)
@@ -83,14 +86,43 @@ collect_more_digits(Data, Call, AlreadyCollected, MaxDigits) ->
                                           )
     of
         {'ok', Ds} ->
-            CollectionName = collection_name(Data),
-            lager:debug("collected ~s~s for ~s", [AlreadyCollected, Ds, CollectionName]),
-
-            cf_exe:set_call(
-              kapps_call:set_dtmf_collection(<<AlreadyCollected/binary, Ds/binary>>, CollectionName, Call)
-             );
+            case lists:member(Ds, valid_digits(Data)) of
+                'true' ->
+                    CollectedDigits = <<AlreadyCollected/binary, Ds/binary>>,
+                    lager:debug("collected ~s for ~s", [CollectedDigits, CollectionName]),
+                    handle_digits(Call, CollectedDigits, CollectionName);
+                'false' ->
+                    maybe_collect_more_digits(Data, Call, AlreadyCollected)
+            end;
         {'error', _E} ->
-            lager:debug("failed to collect DTMF: ~p", [_E])
+            lager:debug("failed to collect DTMF: ~p", [_E]),
+            handle_digits(Call, <<"timeout">>, CollectionName)
+    end.
+
+-spec handle_digits(kapps_call:call(), binary(), binary()) -> 'ok'.
+handle_digits(Call, <<>>, CollectionName) ->
+    handle_digits(Call, <<"timeout">>, CollectionName);
+handle_digits(Call, CollectedDigits, CollectionName) ->
+    case CollectedDigits of
+        <<"timeout">> -> attempt_branch(Call, <<"timeout">>);
+        <<"invalid">> -> attempt_branch(Call, <<"invalid">>);
+        CollectedDigits ->
+            UpdatedCall = kapps_call:set_dtmf_collection(CollectedDigits, CollectionName, Call),
+            cf_exe:set_call(UpdatedCall),
+            attempt_branch(UpdatedCall, CollectedDigits)
+    end.
+
+attempt_branch(Call, Branch) ->
+    case cf_exe:attempt(Branch, Call) of
+        {'attempt_resp', 'ok'} ->
+            lager:info("selection is a callflow child"),
+            'ok';
+        {'attempt_resp', {'error', _}} when Branch =:= <<"invalid">> ->
+            lager:info("no callflow child found for ~s", [Branch]),
+            cf_exe:continue(Call);
+        {'attempt_resp', {'error', _}} ->
+            lager:info("invalid selection for ~s", [Branch]),
+            attempt_branch(Call, <<"invalid">>)
     end.
 
 -spec truncate_after_terminator(binary(), kz_term:ne_binaries()) -> binary().
@@ -146,3 +178,15 @@ terminators(Data) ->
             'true' = lists:all(fun(T) -> lists:member(T, ?ANY_DIGIT) end, Ts),
             lists:usort(Ts)
     end.
+
+-spec valid_digits(kz_json:object()) -> kz_term:ne_binaries().
+    valid_digits(Data) ->
+        case kz_json:get_value(<<"valid_digits">>, Data) of
+            'undefined' -> ?ANY_DIGIT;
+            <<_/binary>> = T ->
+                'true' = lists:member(T, ?ANY_DIGIT),
+                [T];
+            [_|_] = Ts ->
+                'true' = lists:all(fun(T) -> lists:member(T, ?ANY_DIGIT) end, Ts),
+                lists:usort(Ts)
+        end.
