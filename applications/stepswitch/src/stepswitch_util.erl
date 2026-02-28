@@ -96,10 +96,11 @@ correct_shortdial(Number, OffnetReq) ->
     correct_shortdial(Number, CIDNum, DeniedCallRestrictions).
 
 -spec correct_shortdial(kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> kz_term:api_ne_binary().
-correct_shortdial(<<"+", Number/binary>>, CIDNum, DeniedCallRestrictions) ->
-    correct_shortdial(Number, CIDNum, DeniedCallRestrictions);
-correct_shortdial(Number, <<"+", CIDNum/binary>>, DeniedCallRestrictions) ->
-    correct_shortdial(Number, CIDNum, DeniedCallRestrictions);
+%we don't want to strip the + BNP
+%correct_shortdial(<<"+", Number/binary>>, CIDNum, DeniedCallRestrictions) ->
+%    correct_shortdial(Number, CIDNum, DeniedCallRestrictions);
+%correct_shortdial(Number, <<"+", CIDNum/binary>>, DeniedCallRestrictions) ->
+%    correct_shortdial(Number, CIDNum, DeniedCallRestrictions);
 correct_shortdial(Number, CIDNum, DeniedCallRestrictions) when is_binary(CIDNum) ->
     correct_shortdial(Number, CIDNum, DeniedCallRestrictions, should_correct_shortdial(Number)).
 
