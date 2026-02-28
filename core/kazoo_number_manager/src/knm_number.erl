@@ -452,6 +452,7 @@ check_account(PN) ->
                     ,{'local', knm_phone_number:module_name(PN) =:= ?CARRIER_LOCAL}
                     ,{'number', knm_phone_number:number(PN)}
                     ,{'account_id', AssignedTo}
+                    ,{'owner_id',  knm_phone_number:owner_id(PN)}
                     ,{'prepend', feature_prepend(PN)}
                     ,{'inbound_cnam', feature_inbound_cname(PN)}
                     ,{'ringback_media', find_early_ringback(PN)}
@@ -474,15 +475,20 @@ fetch_account_from_ports(Num, Error) ->
         {'error', _E} -> Error;
         {'ok', Port} ->
             AccountId = kz_doc:account_id(Port),
+            OwnerId = kz_json:get_value(<<"owner_id">>, Port),
+            PortState = kz_json:get_value(<<"pvt_port_state">>, Port),
+            lager:debug("Port state is ~s", [PortState]),
+            ForceOutbound = case PortState of <<"staged">> -> 'false'; _ -> 'true' end,
             Props = [{'pending_port', 'true'}
                     ,{'local', 'true'}
                     ,{'number', Num}
                     ,{'account_id', AccountId}
+                    ,{'owner_id', OwnerId}
                      %% No prepend
                     ,{'inbound_cnam', 'false'}
                      %% No ringback_media
                      %% No transfer_media
-                    ,{'force_outbound', 'true'}
+                    ,{'force_outbound', ForceOutbound}
                     ],
             {'ok', AccountId, Props}
     end.
