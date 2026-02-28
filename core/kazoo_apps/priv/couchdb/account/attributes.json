@@ -42,6 +42,9 @@
         "mailbox_number": {
             "map": "function(doc) { if (doc.pvt_type != 'vmbox' || doc.pvt_deleted) return; emit(doc.mailbox, null); }"
         },
+       "number_lookup": {
+           "map": "function(doc) {  if (doc.pvt_type != 'number' || doc.pvt_deleted || !(doc.pvt_owner_id || doc.owner_id)) return;  emit([doc._id, 'user'], doc.pvt_owner_id || doc.owner_id);}"
+       },
         "owned": {
             "map": [
                 "function (doc) {",
