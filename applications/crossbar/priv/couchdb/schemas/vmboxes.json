@@ -54,7 +54,7 @@
         },
         "mailbox": {
             "description": "The voicemail box number",
-            "maxLength": 30,
+            "maxLength": 32,
             "minLength": 1,
             "support_level": "supported",
             "type": "string"
