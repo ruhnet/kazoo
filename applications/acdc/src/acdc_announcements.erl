@@ -54,6 +54,7 @@ get_config(Props) ->
     #{position_announcements_enabled => props:get_is_true(<<"position_announcements_enabled">>, Props, 'false')
      ,wait_time_announcements_enabled => props:get_is_true(<<"wait_time_announcements_enabled">>, Props, 'false')
      ,announcements_interval => props:get_integer_value(<<"interval">>, Props, 30)
+     ,announcements_pre_media => props:get_value(<<"pre_announcements_media">>, Props)
      ,announcements_media => announcements_media(Props)
      }.
 
@@ -88,26 +89,45 @@ init_state(Manager, Call, Config) ->
 %%------------------------------------------------------------------------------
 -spec loop(map()) -> 'no_return'.
 loop(State) ->
-    maybe_announce_position(State).
+    lager:debug("Announcement ~p",[State]),
+    maybe_announce_pre_media(State).
+
+%%------------------------------------------------------------------------------
+%% @doc Conditionally add pre announcement prompt to playlist
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_announce_pre_media(map()) -> 'no_return'.
+maybe_announce_pre_media(#{config := #{announcements_pre_media := 'undefined'}}=State) ->
+    lager:debug("No pre-announcement media"),
+    maybe_announce_position([], State);
+maybe_announce_pre_media(#{call := Call
+			  ,config := Config
+                          }=State) ->
+    Language = kapps_call:language(Call),
+    Prompts = [{'prompt', announcements_pre_media(Config), Language, <<"A">>}],
+    lager:debug("Pre Announcement Media: ~p", [Prompts]),
+    maybe_announce_position(Prompts, State).
 
 %%------------------------------------------------------------------------------
 %% @doc Conditionally add position announcements prompts to playlist
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_announce_position(map()) -> 'no_return'.
-maybe_announce_position(#{config := #{position_announcements_enabled := 'false'}}=State) ->
-    maybe_announce_wait_time([], State);
-maybe_announce_position(#{manager := Manager
+-spec maybe_announce_position(kapps_call_command:audio_macro_prompts(), map()) -> 'no_return'.
+maybe_announce_position(PromptAcc, #{config := #{position_announcements_enabled := 'false'}}=State) ->
+    maybe_announce_wait_time(PromptAcc, State);
+maybe_announce_position(PromptAcc, #{manager := Manager
                          ,call := Call
                          ,config := Config
                          }=State) ->
     Language = kapps_call:language(Call),
     Position = gen_listener:call(Manager, {'queue_position', kapps_call:call_id(Call)}),
 
-    Prompts = [{'prompt', announcements_media_file(<<"you_are_at_position">>, Config), Language, <<"A">>}
-              ,{'say', kz_term:to_binary(Position), <<"number">>}
-              ,{'prompt', announcements_media_file(<<"in_the_queue">>, Config), Language, <<"A">>}],
-    maybe_announce_wait_time(Prompts, State).
+    PromptAcc2 = PromptAcc ++
+	[{'prompt', announcements_media_file(<<"you_are_at_position">>, Config), Language, <<"A">>}
+        ,{'say', kz_term:to_binary(Position), <<"number">>}
+        ,{'prompt', announcements_media_file(<<"in_the_queue">>, Config), Language, <<"A">>}
+        ],
+    maybe_announce_wait_time(PromptAcc2, State).
 
 %%------------------------------------------------------------------------------
 %% @doc Conditionally add wait time announcements prompts to playlist
@@ -146,10 +166,9 @@ maybe_announce_wait_time(PromptAcc, #{call := Call
 play_announcements(Prompts, #{call := Call
                              ,config := Config
                              }=State) ->
-    kapps_call_command:audio_macro(Prompts, Call),
-
     AnnouncementsInterval = announcements_interval(Config),
     timer:sleep(AnnouncementsInterval * ?MILLISECONDS_IN_SECOND),
+    _ = kapps_call_command:audio_macro(Prompts, Call, kz_binary:rand_hex(3), <<"now">>),
     loop(State).
 
 %%------------------------------------------------------------------------------
@@ -213,6 +232,14 @@ time_prompt2(_) ->
 -spec announcements_interval(map()) -> non_neg_integer().
 announcements_interval(#{announcements_interval := Interval}) ->
     Interval.
+
+%%------------------------------------------------------------------------------
+%% @doc Return the media file of a given name from the config.
+%% @end
+%%------------------------------------------------------------------------------
+-spec announcements_pre_media(map()) -> kz_term:api_ne_binary().
+announcements_pre_media(#{announcements_pre_media := Media}) ->
+    Media.
 
 %%------------------------------------------------------------------------------
 %% @doc Return the media file of a given name from the config.
