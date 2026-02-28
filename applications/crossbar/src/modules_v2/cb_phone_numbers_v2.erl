@@ -16,7 +16,7 @@
         ,authenticate/1
         ,put/2, put/3
         ,post/2, post/3
-        ,patch/2
+        ,patch/2 ,patch/3
         ,delete/2
 
         ,set_response/2
@@ -26,13 +26,16 @@
 -include_lib("kazoo_number_manager/include/knm_phone_number.hrl").
 
 -define(CB_LIST, <<"phone_numbers/crossbar_listing">>).
+-define(NUMBERS_UNASSIGNED, <<"numbers/unassigned">>).
 -define(PORT_NUM_LISTING, <<"port_requests/phone_numbers_listing">>).
 -define(PORT_NUMBER_KEY_INDEX, 2).
 
 -define(ACTIVATE, <<"activate">>).
 -define(RESERVE, <<"reserve">>).
 -define(PORT, <<"port">>).
+-define(PORT_OUT, <<"port_out">>).
 
+-define(UNASSIGNED, <<"unassigned">>).
 -define(CLASSIFIERS, <<"classifiers">>).
 -define(IDENTIFY, <<"identify">>).
 -define(COLLECTION, <<"collection">>).
@@ -144,6 +147,8 @@ allowed_methods() ->
     [?HTTP_GET].
 
 -spec allowed_methods(path_token()) -> http_methods().
+allowed_methods(?UNASSIGNED) ->
+    [?HTTP_GET];
 allowed_methods(?CARRIERS_INFO) ->
     [?HTTP_GET];
 allowed_methods(?FIX) ->
@@ -174,8 +179,11 @@ allowed_methods(_PhoneNumber, ?RESERVE) ->
     [?HTTP_PUT];
 allowed_methods(_PhoneNumber, ?PORT) ->
     [?HTTP_PUT];
+allowed_methods(_PhoneNumber, ?PORT_OUT) ->
+    [?HTTP_PATCH];
 allowed_methods(_PhoneNumber, ?IDENTIFY) ->
     [?HTTP_GET].
+
 
 %%------------------------------------------------------------------------------
 %% @doc This function determines if the provided list of Nouns are valid.
@@ -193,6 +201,7 @@ resource_exists(?PREFIX) -> 'true';
 resource_exists(?LOCALITY) -> 'true';
 resource_exists(?CHECK) -> 'true';
 resource_exists(?CLASSIFIERS) -> 'true';
+resource_exists(?UNASSIGNED) -> 'true';
 resource_exists(_PhoneNumber) -> 'true'.
 
 -spec resource_exists(path_token(), path_token()) -> boolean().
@@ -200,6 +209,7 @@ resource_exists(?FIX, _PhoneNumber) -> 'true';
 resource_exists(_PhoneNumber, ?ACTIVATE) -> 'true';
 resource_exists(_PhoneNumber, ?RESERVE) -> 'true';
 resource_exists(_PhoneNumber, ?PORT) -> 'true';
+resource_exists(_PhoneNumber, ?PORT_OUT) -> 'true';
 resource_exists(_PhoneNumber, ?IDENTIFY) -> 'true';
 resource_exists(?CLASSIFIERS, _PhoneNumber) -> 'true';
 resource_exists(_, _) -> 'false'.
@@ -227,6 +237,22 @@ validate_phone_numbers(Context, ?HTTP_GET, _AccountId) ->
     end.
 
 -spec validate(cb_context:context(), path_token()) -> cb_context:context().
+validate(Context, ?UNASSIGNED) ->
+    Options = default_knm_options(Context),
+    AuthBy = knm_number_options:auth_by(Options),
+    lager:debug("O: ~p AB: ~p", [Options, AuthBy]),
+    case kzd_accounts:is_superduper_admin(AuthBy) of
+        'false' ->
+            crossbar_util:response('error', <<"number search restricted">>, 404, Context);
+        'true' ->
+            NumberDbs = knm_util:get_all_number_dbs(),
+            RespData = find_all_db_numbers(Context, NumberDbs, kz_json:new()),
+            cb_context:setters(Context
+                              ,[{fun cb_context:set_resp_data/2, RespData}
+                               ,{fun cb_context:set_resp_status/2, 'success'}
+                               ]
+                              )
+    end;
 validate(Context, ?CARRIERS_INFO) ->
     case pick_account_and_reseller_id(Context) of
         {'error', Reason} ->
@@ -289,6 +315,8 @@ validate(Context, _Number, ?ACTIVATE) ->
 validate(Context, _Number, ?RESERVE) ->
     validate_request(Context);
 validate(Context, _Number, ?PORT) ->
+    validate_request(Context);
+validate(Context, _Number, ?PORT_OUT) ->
     validate_request(Context);
 validate(Context, Number, ?IDENTIFY) ->
     identify(Context, Number).
@@ -405,6 +433,7 @@ put(Context, Number, ?PORT) ->
     CB = fun() -> ?MODULE:put(cb_context:set_accepting_charges(Context), Number, ?PORT) end,
     set_response(Result, Context, CB).
 
+
 -spec patch(cb_context:context(), path_token()) -> cb_context:context().
 patch(Context, ?COLLECTION) ->
     Results = collection_process(Context, ?HTTP_PATCH),
@@ -418,6 +447,17 @@ patch(Context, Number) ->
     Result = knm_number:update(Number, [{fun knm_phone_number:update_doc/2, JObj}], Options),
     CB = fun() -> ?MODULE:patch(cb_context:set_accepting_charges(Context), Number) end,
     set_response(Result, Context, CB).
+
+-spec patch(cb_context:context(), path_token(), path_token()) -> cb_context:context().
+patch(Context, Number, ?PORT_OUT) ->
+    Options = [{'assign_to', cb_context:account_id(Context)}
+              ,{'public_fields', cb_context:doc(Context)}
+               | default_knm_options(Context)
+              ],
+    Result = knm_number:update(Number, [{fun knm_phone_number:set_state/2, ?NUMBER_STATE_PORT_OUT}], Options),
+    CB = fun() -> ?MODULE:patch(cb_context:set_accepting_charges(Context), Number, ?PORT_OUT) end,
+    set_response(Result, Context, CB).
+
 
 -spec delete(cb_context:context(), path_token()) -> cb_context:context().
 delete(Context, ?COLLECTION) ->
@@ -474,6 +514,7 @@ maybe_find_port_number(Context, Number, 'true') ->
             {'ok', PN} = normalize_port_number(Port, Num, cb_context:auth_account_id(Context)),
             Values = [{[<<"_read_only">>, <<"port_id">>], kz_json:get_value(<<"port_id">>, Port)}
                      ,{[<<"_read_only">>, <<"port_state">>], kz_json:get_value(<<"port_state">>, Port)}
+                     ,{[<<"_read_only">>, <<"owner_id">>], kz_json:get_value(<<"owner_id">>, Port)}
                      ],
             JObj = kz_json:set_values(Values, knm_phone_number:to_public_json(PN)),
             port_number_summary(JObj, Context, knm_phone_number:is_authorized(PN))
@@ -490,12 +531,12 @@ port_number_summary(_PhoneNumber, Context, 'false') ->
 normalize_port_number(JObj, Num, AuthBy) ->
     knm_phone_number:setters(knm_phone_number:from_number_with_options(Num, [{'auth_by', AuthBy}])
                             ,[{fun knm_phone_number:set_assigned_to/2, kz_json:get_value(<<"assigned_to">>, JObj)}
+                             ,{fun knm_phone_number:set_owner_id/2, kz_json:get_value(<<"owner_id">>, JObj)}
                              ,{fun knm_phone_number:set_used_by/2, kz_json:get_value(<<"used_by">>, JObj)}
                              ,{fun knm_phone_number:set_state/2, ?NUMBER_STATE_PORT_IN}
                              ,{fun knm_phone_number:set_modified/2, kz_json:get_value(<<"updated">>, JObj)}
                              ,{fun knm_phone_number:set_created/2, kz_json:get_value(<<"created">>, JObj)}
                              ]).
-
 %%------------------------------------------------------------------------------
 %% @doc Lists numbers on GET /v2/accounts/{ACCOUNT_ID}/phone_numbers.
 %% @end
@@ -517,6 +558,7 @@ view_account_phone_numbers(Context) ->
         'success' ->
             ListOfNumProps = cb_context:resp_data(Context1),
             PortNumberJObj = maybe_add_port_request_numbers(Context),
+            lager:debug("merging ~p ~p", [PortNumberJObj, ListOfNumProps]),
             NumbersJObj = lists:foldl(fun kz_json:merge_jobjs/2, PortNumberJObj, ListOfNumProps),
             Services = kz_services:fetch(cb_context:account_id(Context)),
             Quantity = kz_services_quantities:cascade_category(Services, <<"phone_numbers">>),
@@ -531,7 +573,6 @@ view_account_phone_numbers(Context) ->
 -spec should_include_ports(cb_context:context()) -> boolean().
 should_include_ports(Context) ->
     kz_term:is_true(cb_context:req_value(Context, <<"include_ports">>, 'true')).
-
 
 -spec maybe_add_port_request_numbers(cb_context:context()) -> kz_json:object().
 maybe_add_port_request_numbers(Context) ->
@@ -555,6 +596,33 @@ maybe_add_port_request_numbers(Context, 'true') ->
             lists:foldl(fun kz_json:merge_jobjs/2, kz_json:new(), PortNumberList)
     end.
 
+-spec find_all_db_numbers(cb_context:context(), kz_term:ne_binaries(), kz_json:object()) -> kz_json:object().
+find_all_db_numbers(_Context, [], Acc) -> Acc;
+find_all_db_numbers(Context, [NumberDB|NumberDBs], Acc) ->
+    NewNumbers = find_db_numbers(rename_qs_filters(Context), NumberDB),
+    lager:debug("Found ~p in ~p", [NewNumbers, NumberDB]),
+    find_all_db_numbers(Context, NumberDBs, lists:foldl(fun kz_json:merge_jobjs/2, Acc, NewNumbers)).
+
+-spec find_db_numbers(cb_context:context(), kz_term:ne_binary()) -> kz_json:object().
+find_db_numbers(Context, NumberDB) ->
+
+    HasQs = crossbar_filter:is_defined(Context),
+    _ViewOptions = [{'startkey', []}
+                  ,'include_docs'
+                  ],
+    ViewOptions = ['include_docs'],
+    case kz_datamgr:get_results(NumberDB, ?NUMBERS_UNASSIGNED, ViewOptions) of
+        {'error', _Reason} ->
+            lager:debug("failed reason: ~p", [_Reason]),
+            [];
+        {'ok', Numbers} -> NumberList = [normalize_doc_view_result(N, Context)
+                          || N <- Numbers,
+                             crossbar_filter:by_doc(kz_json:get_value(<<"doc">>, N), Context, HasQs)
+                         ],
+        NumberList
+    end.
+
+
 -spec rename_qs_filters(cb_context:context()) -> cb_context:context().
 rename_qs_filters(Context) ->
     Renamer = fun (<<"filter_state">>, Value)       -> {<<"filter_pvt_state">>, Value};
@@ -573,6 +641,14 @@ normalize_view_results(Context, JObj, Acc) ->
     Allowed = knm_providers:available_features(RowObj, ProviderContext),
     NewJObj = kz_json:set_value([<<"features_available">>], Allowed, kz_doc:public_fields(RowObj)),
     [kz_json:from_list([{Number, NewJObj}]) | Acc].
+
+-spec normalize_doc_view_result(kz_json:object(), cb_context:context()) -> kz_json:object().
+normalize_doc_view_result(JObj, Context) ->
+    Number = kz_json:get_value(<<"key">>, JObj),
+    Doc = kz_json:get_value(<<"doc">>, JObj),
+    PN = knm_phone_number:from_json_with_options(Doc, [{'auth_by', cb_context:auth_account_id(Context)}]),
+    Properties = knm_phone_number:to_public_json(PN),
+    kz_json:from_list([{Number, Properties}]).
 
 -spec normalize_port_view_result(kz_json:object()) -> kz_json:object().
 normalize_port_view_result(JObj) ->
