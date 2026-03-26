@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2022, 2600Hz
+%%% @copyright (C) 2010-2026, 2600Hz
 %%% @doc Provide functions to create and manage a single voicemail message.
 %%% @author Hesaam Farhang
 %%% @end
@@ -277,6 +277,7 @@ change_folder(Folder, Message, AccountId, BoxId, Funs0) ->
            ],
     case update(AccountId, BoxId, Message, Funs) of
         {'ok', JObj} ->
+            kvm_util:publish_voicemail_saved(JObj),
             {'ok', kzd_box_message:metadata(JObj)};
         {'error', _R} = Error ->
             lager:debug("failed to update message ~s folder to ~s: ~p", [Folder, _R]),
@@ -327,25 +328,7 @@ update(AccountId, _BoxId, JObj, Funs) ->
 do_update(JObj, Funs) ->
     NewJObj = lists:foldl(fun(F, J) -> F(J) end, JObj, Funs),
     case try_save_document('undefined', NewJObj, 3) of
-        {'ok', _}=OK ->
-            Length = kz_json:get_integer_value([<<"metadata">>, <<"length">>], JObj),
-            BoxId = kz_json:get_ne_binary_value(<<"source_id">>, JObj),
-            Folder = kz_json:get_ne_binary_value([<<"metadata">>, <<"folder">>], NewJObj),
-            MediaId = kz_json:get_ne_binary_value([<<"metadata">>, <<"media_id">>], JObj),
-            Timestamp = kz_time:now_s(),
-            CallProps = [{<<"From-User">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"from_user">>], JObj)}
-                        ,{<<"From-Realm">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"from_realm">>], JObj)}
-                        ,{<<"To-User">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"to_user">>], JObj)}
-                        ,{<<"To-Realm">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"to_realm">>], JObj)}
-                        ,{<<"Account-DB">>, kz_json:get_ne_binary_value(<<"pvt_account_db">>, JObj)}
-                        ,{<<"Account-ID">>, kz_json:get_ne_binary_value(<<"pvt_account_id">>, JObj)}
-                        ,{<<"Caller-ID-Number">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"caller_id_number">>], JObj)}
-                        ,{<<"Caller-ID-Name">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"caller_id_name">>], JObj)}
-                        ,{<<"Call-ID">>, kz_json:get_ne_binary_value([<<"metadata">>, <<"call_id">>], JObj)}
-                        ],
-            Call = kapps_call:from_json(kz_json:from_list(CallProps)),
-            kvm_util:publish_voicemail_saved(Length, BoxId, Folder, Call, MediaId, Timestamp),
-            OK;
+        {'ok', _}=OK -> OK;
         {'error', _R}=Error ->
             lager:debug("failed to update voicemail message ~s: ~p", [kz_doc:id(NewJObj), _R]),
             Error
