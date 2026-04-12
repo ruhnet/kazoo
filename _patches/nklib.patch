@@ -1,0 +1,35 @@
+diff --git a/src/nklib_log_gelf.erl b/src/nklib_log_gelf.erl
+index 74520de..db6efc9 100644
+--- a/src/nklib_log_gelf.erl
++++ b/src/nklib_log_gelf.erl
+@@ -116,7 +116,7 @@ message(_Id, Msg, #state{ip=Ip, port=Port, socket=Socket}=State) ->
+                     ok = gen_udp:send(Socket, Ip, Port, Gelf2);
+                 Size ->
+                     Chunks = get_num_chunks(Size),
+-                    Id = crypto:rand_bytes(8),
++                    Id = crypto:strong_rand_bytes(8),
+                     Head = <<30, 15, Id/binary>>,
+                     send_chunks(Gelf2, Head, 0, Chunks, Socket, Ip, Port)
+             end,
+diff --git a/src/nklib_util.erl b/src/nklib_util.erl
+index 8347ff8..19097f5 100644
+--- a/src/nklib_util.erl
++++ b/src/nklib_util.erl
+@@ -173,7 +173,7 @@ luid() ->
+     binary().
+ 
+ uuid_4122() ->
+-    Rand = hex(crypto:rand_bytes(4)),
++    Rand = hex(crypto:strong_rand_bytes(4)),
+     <<A:16/bitstring, B:16/bitstring, C:16/bitstring>> = 
+         <<(nklib_util:l_timestamp()):48>>,
+     {ok, Hw} = application:get_env(nklib, hw_addr),
+@@ -246,7 +246,7 @@ get_hwaddr() ->
+         false ->
+             case get_hwaddrs(Addrs1) of
+                 {ok, Hex} -> Hex;
+-                false -> hex(crypto:rand_bytes(6))
++                false -> hex(crypto:strong_rand_bytes(6))
+             end
+     end.
+ 
