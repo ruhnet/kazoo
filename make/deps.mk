@@ -4,6 +4,7 @@ DEPS = amqp_client \
 	chatterbox \
 	couchbeam \
 	cowboy \
+	cowlib \
 	ecsv \
 	eflame \
 	eiconv \
@@ -53,6 +54,8 @@ endif
 
 dep_ranch = git https://github.com/2600hz/erlang-ranch 1.7.1
 dep_cowboy = git https://github.com/2600hz/erlang-cowboy 2.6.3
+dep_wsock = git https://github.com/madtrick/wsock
+dep_cowlib = git https://github.com/2600hz/erlang-cowlib 2600hz-2.9.1-4.3
 dep_gun = git https://github.com/2600hz/erlang-gun 2600hz-2.0.0-pre.3-4.3
 
 dep_apns = git https://github.com/2600hz/erlang-apns4erl.git 2600hz-2.4.2
@@ -69,7 +72,7 @@ dep_meck = git https://github.com/eproxus/meck
 dep_nklib = git https://github.com/NetComposer/nklib v0.4.1
 dep_plists = hex 1.0.0
 
-dep_erlcloud = git https://github.com/kageds/erlcloud 3.2.18b
+dep_erlcloud = git https://github.com/erlcloud/erlcloud 3.2.18
 
 dep_erlazure = git https://github.com/lazedo/erlazure.git add-start-link
 
@@ -121,4 +124,14 @@ dep_gen_smtp = git https://github.com/2600hz/erlang-gen_smtp 3f80bfcd4fd8704739d
 ## latest commit to origin/2600Hz: Fixes for encoding email address in a single comma separated header line
 
 autopatch-apns::
-	(cd $(DEPS_DIR)/apns && git apply _patches/apns.patch)
+	(cd $(DEPS_DIR)/apns && git apply ../../_patches/apns.patch)
+
+autopatch-couchbeam::
+	(cd $(DEPS_DIR)/couchbeam && git apply ../../_patches/couchbeam.patch)
+
+autopatch-nklib::
+	(cd $(DEPS_DIR)/nklib && git apply ../../_patches/nklib.patch)
+
+autopatch-wsock::
+	(cd $(DEPS_DIR)/wsock && git apply ../../_patches/wsock.patch)
+

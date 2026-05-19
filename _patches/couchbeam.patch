@@ -1,0 +1,13 @@
+diff --git a/src/couchbeam_util.erl b/src/couchbeam_util.erl
+index b13eb41..92d36e2 100644
+--- a/src/couchbeam_util.erl
++++ b/src/couchbeam_util.erl
+@@ -284,7 +284,7 @@ hmac(Alg, Key, Data) ->
+         {_, true} ->
+             crypto:hmac(Alg, Key, Data);
+         {sha, false} ->
+-            crypto:sha_mac(Key, Data);
++            crypto:hmac(sha, Key, Data);
+         {Alg, false} ->
+             throw({unsupported, Alg})
+     end.

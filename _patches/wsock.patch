@@ -1,0 +1,23 @@
+diff --git a/src/wsock_framing.erl b/src/wsock_framing.erl
+index 0defe9f..4410be6 100644
+--- a/src/wsock_framing.erl
++++ b/src/wsock_framing.erl
+@@ -169,7 +169,7 @@ frame(Data, Options) ->
+ 
+ -spec apply_options(Frame::#frame{}, Options::list()) -> #frame{}.
+ apply_options(Frame, [mask | Tail]) ->
+-  <<MaskKey:32>> = crypto:rand_bytes(4),
++  <<MaskKey:32>> = crypto:strong_rand_bytes(4),
+   T = Frame#frame{
+     mask = 1,
+     masking_key = MaskKey,
+diff --git a/src/wsock_key.erl b/src/wsock_key.erl
+index 72a853a..4ac7f24 100644
+--- a/src/wsock_key.erl
++++ b/src/wsock_key.erl
+@@ -20,4 +20,4 @@
+ 
+ -spec generate() -> string().
+ generate() ->
+-  binary_to_list(base64:encode(crypto:rand_bytes(16))).
++  binary_to_list(base64:encode(crypto:strong_rand_bytes(16))).
