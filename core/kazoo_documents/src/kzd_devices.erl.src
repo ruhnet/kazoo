@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2022, 2600Hz
+%%% @copyright (C) 2010-2026, 2600Hz
 %%% @doc Accessors for `devices' document.
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -30,6 +30,7 @@
 -export([enabled/1, enabled/2, set_enabled/2]).
 -export([exclude_from_queues/1, exclude_from_queues/2, set_exclude_from_queues/2]).
 -export([flags/1, flags/2, set_flags/2]).
+-export([follow_me/1, follow_me/2, set_follow_me/2]).
 -export([formatters/1, formatters/2, set_formatters/2]).
 -export([hotdesk/1, hotdesk/2, set_hotdesk/2]).
 -export([hotdesk_users/1, hotdesk_users/2, set_hotdesk_users/2]).
@@ -375,6 +376,18 @@ flags(Doc, Default) ->
 -spec set_flags(doc(), kz_term:ne_binaries()) -> doc().
 set_flags(Doc, Flags) ->
     kz_json:set_value([<<"flags">>], Flags, Doc).
+
+-spec follow_me(doc()) -> boolean().
+follow_me(Doc) ->
+    follow_me(Doc, true).
+
+-spec follow_me(doc(), Default) -> boolean() | Default.
+follow_me(Doc, Default) ->
+    kz_json:get_boolean_value([<<"follow_me">>], Doc, Default).
+
+-spec set_follow_me(doc(), boolean()) -> doc().
+set_follow_me(Doc, FollowMe) ->
+    kz_json:set_value([<<"follow_me">>], FollowMe, Doc).
 
 -spec formatters(doc()) -> kz_term:api_object().
 formatters(Doc) ->

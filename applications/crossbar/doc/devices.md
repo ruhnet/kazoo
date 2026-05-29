@@ -38,6 +38,7 @@ Key | Description | Type | Default | Required | Support Level
 `exclude_from_queues` | Do not ring this device when calling user/agent in queue | `boolean()` | `false` | `false` |  
 `flags.[]` |   | `string()` |   | `false` | `supported`
 `flags` | Flags set by external applications | `array(string())` |   | `false` | `supported`
+`follow_me` | Determines if the device should receive incoming calls | `boolean()` | `true` | `false` |  
 `formatters` | Schema for request formatters | [#/definitions/formatters](#formatters) |   | `false` |  
 `hotdesk.users./^[a-zA-Z0-9]{32}$/` | user-specific hotdesk settings | `object()` |   | `false` |  
 `hotdesk.users` | The user(s) currently hotdesked into the device | `object()` |   | `false` |  

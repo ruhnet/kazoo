@@ -149,6 +149,11 @@
             "support_level": "supported",
             "type": "array"
         },
+        "follow_me": {
+            "default": true,
+            "description": "Determines if the device should receive incoming calls",
+            "type": "boolean"
+        },
         "formatters": {
             "$ref": "formatters"
         },

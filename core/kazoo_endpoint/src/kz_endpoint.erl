@@ -726,6 +726,7 @@ evaluate_rules_for_creation(Endpoint, Properties, Call) ->
                ,fun maybe_endpoint_called_self/3
                ,fun maybe_endpoint_disabled/3
                ,fun maybe_do_not_disturb/3
+               ,fun maybe_follow_me_off/3
                ,fun maybe_exclude_from_queues/3
                ],
     lists:foldl(fun should_create_endpoint_fold/2
@@ -861,6 +862,14 @@ maybe_do_not_disturb(Endpoint, _Properties, _Call) ->
         'true' ->
             lager:info("do not disturb endpoint ~s", [kz_doc:id(Endpoint)]),
             {'error', 'do_not_disturb'}
+    end.
+
+-spec maybe_follow_me_off(kz_json:object(), kz_json:object(), kapps_call:call()) ->
+          'ok' | {'error', 'follow_me_off'}.
+maybe_follow_me_off(Endpoint, _, _) ->
+    case kz_json:is_true(<<"follow_me">>, Endpoint, 'true') of
+        'true' -> 'ok';
+        'false' -> {'error', 'follow_me_off'}
     end.
 
 -spec maybe_exclude_from_queues(kz_json:object(), kz_json:object(), kapps_call:call()) ->
