@@ -280,8 +280,18 @@ handle_attachment_handler_error({'error', Reason, ExtendedError}, Options) ->
 publish_attachment_saved(JObj) ->
     AccountDb = kz_json:get_ne_binary_value(<<"pvt_account_db">>, JObj),
     ID = kz_json:get_ne_binary_value(<<"_id">>, JObj),
-    FileName = kz_json:get_ne_binary_value(<<"name">>, JObj),
-    Handler = kz_json:get_ne_json_value([<<"pvt_attachments">>, FileName, <<"handler">>], JObj),
+	Attachments = kz_json:get_ne_json_value(<<"pvt_attachments">>, JObj, kz_json:new()),
+	FileName =
+		case kz_json:get_ne_binary_value(<<"name">>, JObj) of
+            'undefined' -> case kz_json:get_keys(Attachments) of %% sometimes 'name' isn't present
+                               [A1|_] -> A1;
+                               _ ->
+                                   lager:notice("could not determine attachment filename"),
+                                   <<"">>
+                           end;
+            Name -> Name
+        end,
+    Handler = kz_json:get_ne_json_value([<<"pvt_attachments">>, FileName, <<"handler">>], JObj, kz_json:new()),
     StorageType =
         case kz_json:get_keys(Handler) of
             [H|_] -> H;
