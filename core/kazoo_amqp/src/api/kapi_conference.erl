@@ -1,7 +1,8 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2022, 2600Hz
+%%% @copyright (C) 2012-2026, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
+%%% @author Ruel Tmeizeh for Umojo, Inc.
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(kapi_conference).
@@ -23,6 +24,7 @@
 -export([mute_participant/1, mute_participant_v/1]).
 -export([play/1, play_v/1
         ,tones/1, tones_v/1
+        ,dtmf/1, dtmf_v/1
         ,say/1, say_v/1
         ,tts/1, tts_v/1
         ]).
@@ -302,6 +304,17 @@
                      ]).
 -define(PLAY_TYPES, [{<<"Conference-ID">>, fun is_binary/1}
                     ,{<<"Media-Name">>, fun is_binary/1}
+                    ]).
+
+%% Conference DTMF
+-define(DTMF_HEADERS, [<<"Application-Name">>, <<"Conference-ID">>, <<"Digits">>]).
+-define(OPTIONAL_DTMF_HEADERS, [<<"Participant-ID">>]).
+-define(DTMF_VALUES, [{<<"Event-Category">>, <<"conference">>}
+                     ,{<<"Event-Name">>, <<"command">>}
+                     ,{<<"Application-Name">>, <<"dtmf">>}
+                     ]).
+-define(DTMF_TYPES, [{<<"Conference-ID">>, fun is_binary/1}
+                    ,{<<"Digits">>, fun is_valid_dtmf/1}
                     ]).
 
 %% Conference Record
@@ -911,6 +924,32 @@ play_macro_req(JObj) -> play_macro_req(kz_json:to_proplist(JObj)).
 play_macro_req_v(Prop) when is_list(Prop) ->
     kz_api:validate(Prop, ?CONF_PLAY_MACRO_REQ_HEADERS, ?CONF_PLAY_MACRO_REQ_VALUES, ?CONF_PLAY_MACRO_REQ_TYPES);
 play_macro_req_v(JObj) -> play_macro_req_v(kz_json:to_proplist(JObj)).
+
+%%------------------------------------------------------------------------------
+%% @doc Takes {@link kz_term:proplist()}, creates JSON string or error.
+%% @end
+%%------------------------------------------------------------------------------
+-spec dtmf(kz_term:api_terms()) -> {'ok', iolist()} | {'error', string()}.
+dtmf(Prop) when is_list(Prop) ->
+    case dtmf_v(Prop) of
+        'true' -> kz_api:build_message(Prop, ?DTMF_HEADERS, ?OPTIONAL_DTMF_HEADERS);
+        'false' -> {'error', "Proplist failed validation for dtmf"}
+    end;
+dtmf(JObj) -> dtmf(kz_json:to_proplist(JObj)).
+
+-spec dtmf_v(kz_term:api_terms()) -> boolean().
+dtmf_v(Prop) when is_list(Prop) ->
+    kz_api:validate(Prop, ?DTMF_HEADERS, ?DTMF_VALUES, ?DTMF_TYPES);
+dtmf_v(JObj) -> dtmf_v(kz_json:to_proplist(JObj)).
+
+-spec is_valid_dtmf(binary() | number()) -> boolean().
+is_valid_dtmf(Digits) when is_binary(Digits) ->
+    case re:replace(Digits, "[^a-dA-D0-9*#]", "", [global, {return, binary}]) of
+        <<>> -> 'false';
+        _DTMF -> 'true'
+    end;
+is_valid_dtmf(Digits) when is_number(Digits) -> is_valid_dtmf(kz_term:to_binary(Digits));
+is_valid_dtmf(_) -> 'false'.
 
 %%------------------------------------------------------------------------------
 %% @doc Takes {@link kz_term:proplist()}, creates JSON string or error.
