@@ -234,6 +234,7 @@ attributes_keys() ->
     ,<<"call_waiting">>
     ,<<"caller_id">>
     ,<<"caller_id_options">>
+    ,<<"delay">>
     ,<<"dial_plan">>
     ,<<"do_not_disturb">>
     ,<<"formatters">>
@@ -246,6 +247,7 @@ attributes_keys() ->
     ,<<"presence_id">>
     ,<<"record_call">>
     ,<<"ringtones">>
+    ,<<"timeout">>
     ,?ATTR_LOWER_KEY
     ].
 
@@ -357,6 +359,12 @@ merge_attribute(<<"outbound_flags">>, Account, Endpoint, Owner) ->
                             ,kzd_devices:outbound_dynamic_flags(Endpoint)
                             ]),
     kzd_devices:set_outbound_flags(Endpoint, Static, Dynamic);
+merge_attribute(<<"timeout">>, _Account, Endpoint, Owner) ->
+    Timeout = get_timeout(Endpoint, Owner),
+    kz_json:set_value(<<"timeout">>, Timeout, Endpoint);
+merge_attribute(<<"delay">>, _Account, Endpoint, Owner) ->
+    Delay = get_delay(Endpoint, Owner),
+    kz_json:set_value(<<"delay">>, Delay, Endpoint);
 merge_attribute(Key, Account, Endpoint, Owner) ->
     AccountAttr = kz_json:get_ne_value(Key, Account, kz_json:new()),
     EndpointAttr = kz_json:get_ne_value(Key, Endpoint, kz_json:new()),
@@ -1210,8 +1218,8 @@ create_sip_endpoint(Endpoint, Properties, #clid{}=Clid, Call) ->
                       ,{<<"Ignore-Early-Media">>, get_ignore_early_media(Endpoint)}
                       ,{<<"Bypass-Media">>, get_bypass_media(Endpoint)}
                       ,{<<"Endpoint-Progress-Timeout">>, get_progress_timeout(Endpoint)}
-                      ,{<<"Endpoint-Timeout">>, get_timeout(Properties)}
-                      ,{<<"Endpoint-Delay">>, get_delay(Properties)}
+                      ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
+                      ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
                       ,{<<"Endpoint-ID">>, kz_doc:id(Endpoint)}
                       ,{<<"Codecs">>, get_codecs(Endpoint)}
                       ,{<<"Hold-Media">>, kz_attributes:moh_attributes(Endpoint, <<"media_id">>, Call)}
@@ -1289,9 +1297,9 @@ create_push_endpoint(Endpoint, Properties, Call) ->
         ,{<<"Ignore-Early-Media">>, get_ignore_early_media(Endpoint)}
         ,{<<"Bypass-Media">>, get_bypass_media(Endpoint)}
         ,{<<"Endpoint-Progress-Timeout">>, get_progress_timeout(Endpoint)}
-        ,{<<"Endpoint-Timeout">>, get_timeout(Properties)}
+        ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
         ,{<<"Endpoint-ID">>, kz_doc:id(Endpoint)}
-        ,{<<"Endpoint-Delay">>, get_delay(Properties)}
+        ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
         ,{<<"Codecs">>, get_codecs(Endpoint)}
         ,{<<"Hold-Media">>, kz_attributes:moh_attributes(Endpoint, <<"media_id">>, Call)}
         ,{<<"Presence-ID">>, kz_attributes:presence_id(Endpoint, Call)}
@@ -1405,8 +1413,8 @@ create_call_fwd_endpoint(Endpoint, Properties, Call) ->
       ,{<<"Ignore-Early-Media">>, IgnoreEarlyMedia}
       ,{<<"Bypass-Media">>, <<"false">>}
       ,{<<"Endpoint-Progress-Timeout">>, get_progress_timeout(Endpoint)}
-      ,{<<"Endpoint-Timeout">>, get_timeout(Properties)}
-      ,{<<"Endpoint-Delay">>, get_delay(Properties)}
+      ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
+      ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
       ,{<<"Presence-ID">>, kz_attributes:presence_id(Endpoint, Call)}
       ,{<<"Callee-ID-Name">>, Clid#clid.callee_name}
       ,{<<"Callee-ID-Number">>, Clid#clid.callee_number}
@@ -1454,8 +1462,8 @@ create_mobile_audio_endpoint(Endpoint, Properties, Call) ->
               ,{<<"To-Username">>, get_to_username(SIPSettings)}
               ,{<<"To-Realm">>, get_sip_realm(Endpoint, kapps_call:account_id(Call))}
               ,{<<"Ignore-Early-Media">>, <<"true">>}
-              ,{<<"Endpoint-Timeout">>, get_timeout(Properties)}
-              ,{<<"Endpoint-Delay">>, get_delay(Properties)}
+              ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
+              ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
               ,{<<"Presence-ID">>, kz_attributes:presence_id(Endpoint, Call)}
               ,{<<"Custom-SIP-Headers">>, generate_sip_headers(Endpoint, <<"mobile">>, Call)}
               ,{<<"Codecs">>, Codecs}
@@ -1865,18 +1873,26 @@ get_to_user(SIPJObj, Properties) ->
 get_to_username(SIPJObj) ->
     kz_json:get_ne_binary_value(<<"username">>, SIPJObj).
 
--spec get_timeout(kz_json:object()) -> kz_term:api_binary().
-get_timeout(JObj) ->
-    case kz_json:get_integer_value(<<"timeout">>, JObj, 0) of
-        Timeout when Timeout > 0 -> kz_term:to_binary(Timeout);
-        _Else -> 'undefined'
+-spec get_timeout(kz_json:object(), kz_json:object()) -> kz_term:api_ne_binary().
+get_timeout(Primary, Secondary) ->
+    case kz_json:get_integer_value(<<"timeout">>, Primary) of
+        Timeout when is_integer(Timeout), Timeout > 0 -> kz_term:to_binary(Timeout);
+        _ ->
+            case kz_json:get_integer_value(<<"timeout">>, Secondary) of
+                Timeout when is_integer(Timeout), Timeout > 0 -> kz_term:to_binary(Timeout);
+                _ -> 'undefined'
+            end
     end.
 
--spec get_delay(kz_json:object()) -> kz_term:api_binary().
-get_delay(JObj) ->
-    case kz_json:get_integer_value(<<"delay">>, JObj, 0) of
-        Delay when Delay > 0 -> kz_term:to_binary(Delay);
-        _Else -> 'undefined'
+-spec get_delay(kz_json:object(), kz_json:object()) -> kz_term:api_ne_binary().
+get_delay(Primary, Secondary) ->
+    case kz_json:get_integer_value(<<"delay">>, Primary) of
+        Delay when is_integer(Delay), Delay > 0 -> kz_term:to_binary(Delay);
+        _ ->
+            case kz_json:get_integer_value(<<"delay">>, Secondary) of
+                Delay when is_integer(Delay), Delay > 0 -> kz_term:to_binary(Delay);
+                _ -> 'undefined'
+            end
     end.
 
 -spec get_outbound_flags(kz_json:object()) -> kz_term:api_binary().

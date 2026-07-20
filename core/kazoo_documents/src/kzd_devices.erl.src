@@ -23,6 +23,7 @@
 -export([caller_id_options_outbound_privacy/1, caller_id_options_outbound_privacy/2, set_caller_id_options_outbound_privacy/2]).
 -export([contact_list/1, contact_list/2, set_contact_list/2]).
 -export([contact_list_exclude/1, contact_list_exclude/2, set_contact_list_exclude/2]).
+-export([delay/1, delay/2, set_delay/2]).
 -export([device_type/1, device_type/2, set_device_type/2]).
 -export([dial_plan/1, dial_plan/2, set_dial_plan/2]).
 -export([do_not_disturb/1, do_not_disturb/2, set_do_not_disturb/2]).
@@ -75,6 +76,7 @@
 -export([sip_static_route/1, sip_static_route/2, set_sip_static_route/2]).
 -export([sip_username/1, sip_username/2, set_sip_username/2]).
 -export([suppress_unregister_notifications/1, suppress_unregister_notifications/2, set_suppress_unregister_notifications/2]).
+-export([timeout/1, timeout/2, set_timeout/2]).
 -export([timezone/1, timezone/2, set_timezone/2]).
 
 
@@ -292,6 +294,18 @@ contact_list_exclude(Doc, Default) ->
 -spec set_contact_list_exclude(doc(), boolean()) -> doc().
 set_contact_list_exclude(Doc, ContactListExclude) ->
     kz_json:set_value([<<"contact_list">>, <<"exclude">>], ContactListExclude, Doc).
+
+-spec delay(doc()) -> kz_term:api_pos_integer().
+delay(Doc) ->
+    delay(Doc, 'undefined').
+
+-spec delay(doc(), Default) -> pos_integer() | Default.
+delay(Doc, Default) ->
+    kz_json:get_integer_value([<<"delay">>], Doc, Default).
+
+-spec set_delay(doc(), pos_integer()) -> doc().
+set_delay(Doc, Delay) ->
+    kz_json:set_value([<<"delay">>], Delay, Doc).
 
 -spec device_type(doc()) -> kz_term:api_binary().
 device_type(Doc) ->
@@ -916,6 +930,18 @@ suppress_unregister_notifications(Doc, Default) ->
 -spec set_suppress_unregister_notifications(doc(), boolean()) -> doc().
 set_suppress_unregister_notifications(Doc, SuppressUnregisterNotifications) ->
     kz_json:set_value([<<"suppress_unregister_notifications">>], SuppressUnregisterNotifications, Doc).
+
+-spec timeout(doc()) -> kz_term:api_pos_integer().
+timeout(Doc) ->
+    timeout(Doc, true).
+
+-spec timeout(doc(), Default) -> pos_integer() | Default.
+timeout(Doc, Default) ->
+    kz_json:get_integer_value([<<"timeout">>], Doc, Default).
+
+-spec set_timeout(doc(), pos_integer()) -> doc().
+set_timeout(Doc, Timeout) ->
+    kz_json:set_value([<<"timeout">>], Timeout, Doc).
 
 -spec timezone(doc()) -> kz_term:api_binary().
 timezone(Doc) ->

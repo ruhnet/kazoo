@@ -5438,6 +5438,11 @@
                     },
                     "type": "object"
                 },
+                "delay": {
+                    "description": "Delay (in seconds) before ringing the device when part of a parallel bridge/originate",
+                    "minimum": 1,
+                    "type": "integer"
+                },
                 "device_type": {
                     "description": "Arbitrary device type used by the UI and billing system",
                     "type": "string"
@@ -5729,6 +5734,11 @@
                     "default": false,
                     "description": "When true disables deregister notifications",
                     "type": "boolean"
+                },
+                "timeout": {
+                    "description": "Default duration (in seconds) to ring the device",
+                    "minimum": 1,
+                    "type": "integer"
                 },
                 "timezone": {
                     "description": "Device's timezone",
@@ -36775,6 +36785,11 @@
                     },
                     "type": "object"
                 },
+                "delay": {
+                    "description": "Delay (in seconds) before ringing the user's devices when part of a parallel bridge/originate",
+                    "minimum": 1,
+                    "type": "integer"
+                },
                 "dial_plan": {
                     "$ref": "#/definitions/dialplans",
                     "description": "A list of rules used to modify dialed numbers"
@@ -36942,6 +36957,11 @@
                         }
                     },
                     "type": "object"
+                },
+                "timeout": {
+                    "description": "Default duration (in seconds) to ring the user's devices",
+                    "minimum": 1,
+                    "type": "integer"
                 },
                 "timezone": {
                     "description": "User's timezone",
