@@ -160,7 +160,7 @@
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec id(doc()) -> kz_term:api_binary().
+-spec id(doc()) -> kz_term:api_ne_binary().
 id(JObj) ->
     id(JObj, 'undefined').
 

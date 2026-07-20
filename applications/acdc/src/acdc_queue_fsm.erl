@@ -60,7 +60,7 @@
 -define(CONNECTION_TIMEOUT, 1000 * ?SECONDS_IN_HOUR).
 -define(CONNECTION_TIMEOUT_MESSAGE, 'connection_timer_expired').
 
-%% How long to ring the agent before trying the next agent
+%% Default duration to ring agent's endpoints (overridden by custom delay/timeout on the endpoints)
 -define(AGENT_RING_TIMEOUT, 5).
 -define(AGENT_RING_TIMEOUT_MESSAGE, 'agent_timer_expired').
 
@@ -75,7 +75,7 @@
 
                ,timer_ref :: kz_term:api_reference() % for tracking timers
                ,connection_timer_ref :: kz_term:api_reference() % how long can a caller wait in the queue
-               ,agent_ring_timer_ref :: kz_term:api_reference() % how long to ring an agent before moving to the next
+               ,agent_ring_timer_ref :: kz_term:api_reference() % expires after ringing agent's endpoints for x time
 
                ,member_call :: kapps_call:call()
                ,member_call_start :: kz_term:api_non_neg_integer()
@@ -84,7 +84,7 @@
                                        %% Config options
                ,name :: kz_term:ne_binary()
                ,connection_timeout :: pos_integer()
-               ,agent_ring_timeout = 10 :: pos_integer() % how long to ring an agent before giving up
+               ,agent_ring_timeout = 10 :: pos_integer() % default duration to ring agent's endpoints (overridden by EP delay/timeout)
                ,max_queue_size = 0 :: integer() % restrict the number of the queued callers
                ,ring_simultaneously = 1 :: integer() % how many agents to try ringing at a time (first one wins)
                ,enter_when_empty = true :: boolean() % if a queue is agent-less, can the caller enter?
@@ -441,8 +441,8 @@ connect_req('cast', {'member_call_cancel', JObj}, #state{listener_proc=ListenerS
     end;
 
 connect_req('cast', {'agent_resp', Resp}, #state{connect_resps=CRs
-                                        ,manager_proc=MgrSrv
-                                        }=State) ->
+                                                ,manager_proc=MgrSrv
+                                                }=State) ->
     Agents = acdc_queue_manager:current_agents(MgrSrv),
     Resps = [Resp | CRs],
     {NextState, State1} =
@@ -992,7 +992,7 @@ maybe_delay_connect_req(Call, CallJObj, Delivery, #state{listener_proc=ListenerS
                                                         ,manager_proc=MgrSrv
                                                         ,connection_timeout=ConnTimeout
                                                         ,connection_timer_ref=ConnRef
-                                                        ,cdr_url=Url
+                                                        ,agent_ring_timeout=RingTimeout
                                                         }=State) ->
     CallId = kapps_call:call_id(Call),
     case acdc_queue_manager:up_next(MgrSrv, CallId) of
@@ -1002,7 +1002,7 @@ maybe_delay_connect_req(Call, CallJObj, Delivery, #state{listener_proc=ListenerS
             webseq:note(?WSD_ID, self(), 'right', [CallId, <<": member call">>]),
             webseq:evt(?WSD_ID, CallId, self(), <<"member call received">>),
 
-            acdc_queue_listener:member_connect_req(ListenerSrv, CallJObj, Delivery, Url),
+            acdc_queue_listener:member_connect_req(ListenerSrv, CallJObj, RingTimeout, Delivery),
 
             maybe_stop_timer(ConnRef), % stop the old one, maybe
 
@@ -1046,13 +1046,15 @@ maybe_connect_re_req(MgrSrv, ListenerSrv, State) ->
 
 -spec maybe_delay_connect_re_req(pid(), pid(), state()) ->
           {'next_state', 'connect_req', state()}.
-maybe_delay_connect_re_req(MgrSrv, ListenerSrv, #state{member_call=Call}=State) ->
+maybe_delay_connect_re_req(MgrSrv, ListenerSrv, #state{member_call=Call
+                                                      ,agent_ring_timeout=RingTimeout
+                                                      }=State) ->
     CallId = kapps_call:call_id(Call),
     case acdc_queue_manager:up_next(MgrSrv, CallId) of
         'true' ->
             lager:debug("done waiting, no agents responded, let's ask again"),
             webseq:note(?WSD_ID, self(), 'right', <<"no agents responded, trying again">>),
-            acdc_queue_listener:member_connect_re_req(ListenerSrv),
+            acdc_queue_listener:member_connect_re_req(ListenerSrv, RingTimeout),
             {'next_state', 'connect_req', State#state{collect_ref=start_collect_timer()}};
         'false' ->
             lager:debug("connect_re_req delayed (not up next)"),
@@ -1124,10 +1126,11 @@ maybe_pick_winner(#state{connect_resps=CRs
                                               [NewAgent|Wins] end,
                                       [], Winners),
 
+            AgentRingTimerRef = start_agent_ring_timer(winners_max_ring_timeout(Winners)),
             {'connecting', State#state{connect_resps=Rest
                                       ,connect_wins=ConnectWins
                                       ,collect_ref='undefined'
-                                      ,agent_ring_timer_ref=start_agent_ring_timer(RingTimeout)
+                                      ,agent_ring_timer_ref=AgentRingTimerRef
                                       ,member_call_winners=Winners
                                       }};
         'undefined' ->
@@ -1150,3 +1153,9 @@ callback_details(#state{callback_details={Number, CIDPrepend}}) ->
     kz_json:from_list([{<<"Callback-Number">>, Number}
                       ,{<<"Prepend-CID">>, CIDPrepend}
                       ]).
+
+-spec winners_max_ring_timeout(kz_json:objects()) -> pos_integer().
+winners_max_ring_timeout(Winners) ->
+    lists:max([kz_json:get_ne_integer_value(<<"Endpoints-Max-Ring-Timeout">>, Winner)
+               || Winner <- Winners
+              ]).

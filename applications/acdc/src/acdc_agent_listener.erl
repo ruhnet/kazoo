@@ -14,7 +14,7 @@
 
 %% API
 -export([start_link/3, start_link/4, start_link/5
-        ,member_connect_resp/2
+        ,member_connect_resp/3
         ,member_connect_retry/2
         ,member_connect_accepted/1, member_connect_accepted/2, member_connect_accepted/3
         ,monitor_connect_accepted/2
@@ -204,9 +204,9 @@ start_link(Supervisor, ThiefCall, QueueId) ->
                            ,[Supervisor, ThiefCall, [QueueId]]
                            ).
 
--spec member_connect_resp(pid(), kz_json:object()) -> 'ok'.
-member_connect_resp(Srv, ReqJObj) ->
-    gen_listener:cast(Srv, {'member_connect_resp', ReqJObj}).
+-spec member_connect_resp(pid(), kz_json:object(), pos_integer()) -> 'ok'.
+member_connect_resp(Srv, ReqJObj, EndpointsMaxRingTimeout) ->
+    gen_listener:cast(Srv, {'member_connect_resp', ReqJObj, EndpointsMaxRingTimeout}).
 
 -spec member_connect_retry(pid(), kz_json:object()) -> 'ok'.
 member_connect_retry(Srv, WinJObj) ->
@@ -629,14 +629,11 @@ handle_cast({'bridge_to_member', Call, WinJObj, EPs, CDRUrl, RecordingUrl}, #sta
     _ = kapps_call:put_callid(Call),
     lager:debug("bridging to agent endpoints"),
 
-    RingTimeout = kz_json:get_value(<<"Ring-Timeout">>, WinJObj),
-    lager:debug("ring agent for ~ps", [RingTimeout]),
-
     ShouldRecord = should_record_endpoints(EPs, record_calls(Agent)
                                           ,kz_json:is_true(<<"Record-Caller">>, WinJObj, 'false')
                                           ),
 
-    AgentCallIds = lists:append(maybe_connect_to_agent(MyQ, EPs, Call, RingTimeout, AgentId, CDRUrl)
+    AgentCallIds = lists:append(maybe_connect_to_agent(MyQ, EPs, Call, AgentId, CDRUrl)
                                ,ACallIds),
 
     gen_listener:add_binding(self(), 'acdc_agent', [{'callid', call_id(Call)}
@@ -712,14 +709,11 @@ handle_cast({'originate_callback_to_agent', Call, WinJObj, EPs, CDRUrl, Recordin
     _ = kapps_call:put_callid(Call),
     lager:debug("calling agent to begin callback"),
 
-    RingTimeout = kz_json:get_value(<<"Ring-Timeout">>, WinJObj),
-    lager:debug("ring agent for ~ps", [RingTimeout]),
-
     ShouldRecord = should_record_endpoints(EPs, record_calls(Agent)
                                           ,kz_json:is_true(<<"Record-Caller">>, WinJObj, 'false')
                                           ),
 
-    AgentCallIds = lists:append(maybe_originate_callback(MyQ, EPs, Call, RingTimeout, AgentId, CDRUrl, Number)
+    AgentCallIds = lists:append(maybe_originate_callback(MyQ, EPs, Call, AgentId, CDRUrl, Number)
                                ,ACallIds),
 
     lager:debug("originate sent, waiting on bridge of agent and callback call"),
@@ -825,12 +819,12 @@ handle_cast({'member_callback_accepted', ACall}, #state{msg_queue_id=AmqpQueue
 
     {'noreply', State#state{agent_call_ids=ACallIds1}, 'hibernate'};
 
-handle_cast({'member_connect_resp', ReqJObj}, #state{agent_id=AgentId
-                                                    ,last_connect=LastConn
-                                                    ,agent_queues=Qs
-                                                    ,my_id=MyId
-                                                    ,my_q=MyQ
-                                                    }=State) ->
+handle_cast({'member_connect_resp', ReqJObj, EPsMaxRingTimeout}, #state{agent_id=AgentId
+                                                                       ,last_connect=LastConn
+                                                                       ,agent_queues=Qs
+                                                                       ,my_id=MyId
+                                                                       ,my_q=MyQ
+                                                                       }=State) ->
     ACDcQueue = kz_json:get_value(<<"Queue-ID">>, ReqJObj),
     case is_valid_queue(ACDcQueue, Qs) of
         'false' ->
@@ -839,7 +833,7 @@ handle_cast({'member_connect_resp', ReqJObj}, #state{agent_id=AgentId
         'true' ->
             lager:debug("responding to member_connect_req"),
 
-            send_member_connect_resp(ReqJObj, MyQ, AgentId, MyId, LastConn),
+            send_member_connect_resp(ReqJObj, MyQ, AgentId, MyId, EPsMaxRingTimeout, LastConn),
             {'noreply', State#state{msg_queue_id = kz_json:get_value(<<"Server-ID">>, ReqJObj)}
             ,'hibernate'}
     end;
@@ -1096,13 +1090,15 @@ is_valid_queue(Q, Qs) -> lists:member(Q, Qs).
 
 -spec send_member_connect_resp(kz_json:object(), kz_term:ne_binary()
                               ,kz_term:ne_binary(), kz_term:ne_binary()
-                              , kz_term:kz_now() | 'undefined'
+                              ,pos_integer()
+                              ,kz_term:kz_now() | 'undefined'
                               ) -> 'ok'.
-send_member_connect_resp(JObj, MyQ, AgentId, MyId, LastConn) ->
+send_member_connect_resp(JObj, MyQ, AgentId, MyId, EndpointsMaxRingTimeout, LastConn) ->
     Queue = kz_json:get_value(<<"Server-ID">>, JObj),
     IdleTime = idle_time(LastConn),
     Resp = props:filter_undefined(
              [{<<"Agent-ID">>, AgentId}
+             ,{<<"Endpoints-Max-Ring-Timeout">>, EndpointsMaxRingTimeout}
              ,{<<"Idle-Time">>, IdleTime}
              ,{<<"Process-ID">>, MyId}
              ,{<<"Server-ID">>, MyQ}
@@ -1221,9 +1217,13 @@ call_id(Call) ->
                         end, 'undefined', Keys)
     end.
 
--spec maybe_connect_to_agent(kz_term:ne_binary(), kz_json:objects(), kapps_call:call(), kz_term:api_integer(), kz_term:ne_binary(), kz_term:api_binary()) ->
-          kz_term:proplist().
-maybe_connect_to_agent(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl) ->
+-spec maybe_connect_to_agent(kz_term:ne_binary()
+                            ,kz_json:objects()
+                            ,kapps_call:call()
+                            ,kz_term:ne_binary()
+                            ,kz_term:api_binary()
+                            ) -> kz_term:proplist().
+maybe_connect_to_agent(MyQ, EPs, Call, AgentId, _CdrUrl) ->
     MCallId = kapps_call:call_id(Call),
     kz_util:put_callid(MCallId),
 
@@ -1244,8 +1244,7 @@ maybe_connect_to_agent(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl) ->
                                                 acdc_util:bind_to_call_events(ACallId),
 
                                                 {[ACallId | Cs]
-                                                ,[kz_json:set_values([{<<"Endpoint-Timeout">>, Timeout}
-                                                                     ,{<<"Outbound-Call-ID">>, ACallId}
+                                                ,[kz_json:set_values([{<<"Outbound-Call-ID">>, ACallId}
                                                                      ,{<<"Existing-Call-ID">>, kapps_call:call_id(Call)}
                                                                      ], EP)
                                                   | Es
@@ -1257,7 +1256,7 @@ maybe_connect_to_agent(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl) ->
     Prop = props:filter_undefined(
              [{<<"Msg-ID">>, kz_binary:rand_hex(6)}
              ,{<<"Custom-Channel-Vars">>, kz_json:from_list(CCVs)}
-             ,{<<"Timeout">>, Timeout}
+             ,{<<"Timeout">>, acdc_agent_util:endpoints_max_ring_timeout(Endpoints)}
              ,{<<"Endpoints">>, Endpoints}
              ,{<<"Export-Custom-Channel-Vars">>, [<<"Account-ID">>
                                                  ,<<"Retain-CID">>
@@ -1282,10 +1281,14 @@ maybe_connect_to_agent(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl) ->
     kapi_resource:publish_originate_req(Prop),
     lists:map(fun(ACallId) -> {ACallId, 'undefined'} end, ACallIds).
 
--spec maybe_originate_callback(kz_term:ne_binary(), kz_json:objects(), kapps_call:call(), kz_term:api_integer(), kz_term:ne_binary(), kz_term:api_binary()
-                              ,kz_json:object()) ->
-          kz_term:proplist().
-maybe_originate_callback(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl, Details) ->
+-spec maybe_originate_callback(kz_term:ne_binary()
+                              ,kz_json:objects()
+                              ,kapps_call:call()
+                              ,kz_term:ne_binary()
+                              ,kz_term:api_binary()
+                              ,kz_json:object()
+                              ) -> kz_term:proplist().
+maybe_originate_callback(MyQ, EPs, Call, AgentId, _CdrUrl, Details) ->
     MCallId = kapps_call:call_id(Call),
     put('callid', MCallId),
 
@@ -1307,9 +1310,7 @@ maybe_originate_callback(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl, Details) ->
                                                 acdc_util:bind_to_call_events(ACallId),
 
                                                 {[ACallId | Cs]
-                                                ,[kz_json:set_values([{<<"Endpoint-Timeout">>, Timeout}
-                                                                     ,{<<"Outbound-Call-ID">>, ACallId}
-                                                                     ], EP)
+                                                ,[kz_json:set_values([{<<"Outbound-Call-ID">>, ACallId}], EP)
                                                   | Es
                                                  ]}
                                         end, {[], []}, EPs),
@@ -1321,7 +1322,7 @@ maybe_originate_callback(MyQ, EPs, Call, Timeout, AgentId, _CdrUrl, Details) ->
                                   ,{<<"Account-ID">>, AccountId}
                                   ,{<<"Endpoints">>, Endpoints}
                                   ,{<<"Msg-ID">>, kz_binary:rand_hex(6)}
-                                  ,{<<"Timeout">>, Timeout}
+                                   ,{<<"Timeout">>, acdc_agent_util:endpoints_max_ring_timeout(Endpoints)}
                                   ,{<<"Ignore-Display-Updates">>, <<"true">>}
                                   ,{<<"Ignore-Early-Media">>, <<"true">>}
                                   ,{<<"Caller-ID-Name">>, CIDName}

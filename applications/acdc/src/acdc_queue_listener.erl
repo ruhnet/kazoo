@@ -25,7 +25,7 @@
 -export([start_link/4
         ,member_call/3
         ,member_connect_req/4
-        ,member_connect_re_req/1
+        ,member_connect_re_req/2
         ,member_connect_win/3
         ,member_connect_satisfied/3
         ,timeout_member_call/1, timeout_member_call/2
@@ -133,14 +133,13 @@ start_link(WorkerSup, MgrPid, AccountId, QueueId) ->
 member_call(Srv, MemberCallJObj, Delivery) ->
     gen_listener:cast(Srv, {'member_call', MemberCallJObj, Delivery}).
 
--spec member_connect_req(pid(), kz_json:object(), any(), kz_term:api_binary()) -> 'ok'.
-member_connect_req(Srv, MemberCallJObj, Delivery, Url) ->
-    gen_listener:cast(Srv, {'member_connect_req', MemberCallJObj, Delivery, Url}).
+-spec member_connect_req(pid(), kz_json:object(), pos_integer(), any()) -> 'ok'.
+member_connect_req(Srv, MemberCallJObj, RingTimeout, Delivery) ->
+    gen_listener:cast(Srv, {'member_connect_req', MemberCallJObj, RingTimeout, Delivery}).
 
-
--spec member_connect_re_req(pid()) -> 'ok'.
-member_connect_re_req(Srv) ->
-    gen_listener:cast(Srv, {'member_connect_re_req'}).
+-spec member_connect_re_req(pid(), pos_integer()) -> 'ok'.
+member_connect_re_req(Srv, RingTimeout) ->
+    gen_listener:cast(Srv, {'member_connect_re_req', RingTimeout}).
 
 -spec member_connect_win(pid(), kz_json:object(), kz_term:proplist()) -> 'ok'.
 member_connect_win(Srv, RespJObj, QueueOpts) ->
@@ -291,7 +290,7 @@ handle_cast({'member_call', MemberCallJObj, Delivery}, #state{queue_id=QueueId
                            ,member_call_queue=kz_json:get_value(<<"Server-ID">>, MemberCallJObj)
                            }};
 
-handle_cast({'member_connect_req', MemberCallJObj, Delivery, _Url}
+handle_cast({'member_connect_req', MemberCallJObj, RingTimeout, Delivery}
            ,#state{my_q=MyQ
                   ,my_id=MyId
                   ,account_id=AccountId
@@ -312,7 +311,7 @@ handle_cast({'member_connect_req', MemberCallJObj, Delivery, _Url}
         _ ->
             'ok'
     end,
-    send_member_connect_req(CallId, AccountId, QueueId, MyQ, MyId),
+    send_member_connect_req(CallId, AccountId, QueueId, MyQ, MyId, RingTimeout),
 
     %% Be ready in case a callback or cancel comes in while queue_listener is handling call
     gen_listener:add_binding(self(), 'acdc_queue', [{'restrict_to', ['member_callback_reg', 'member_call_result']}
@@ -328,13 +327,13 @@ handle_cast({'member_connect_req', MemberCallJObj, Delivery, _Url}
     ,'hibernate'};
 
 
-handle_cast({'member_connect_re_req'}, #state{my_q=MyQ
-                                             ,my_id=MyId
-                                             ,account_id=AccountId
-                                             ,queue_id=QueueId
-                                             ,call=Call
-                                             }=State) ->
-    send_member_connect_req(kapps_call:call_id(Call), AccountId, QueueId, MyQ, MyId),
+handle_cast({'member_connect_re_req', RingTimeout}, #state{my_q=MyQ
+                                                          ,my_id=MyId
+                                                          ,account_id=AccountId
+                                                          ,queue_id=QueueId
+                                                          ,call=Call
+                                                          }=State) ->
+    send_member_connect_req(kapps_call:call_id(Call), AccountId, QueueId, MyQ, MyId, RingTimeout),
     {'noreply', State};
 handle_cast({'member_connect_win', RespJObj, QueueOpts}, #state{my_q=MyQ
                                                                ,my_id=MyId
@@ -568,15 +567,21 @@ maybe_timeout_agent(_AgentId, QueueId, Call, JObj) ->
     lager:warning("timing out winning agent ~s because they should not be able to pick up after the queue ~s timeout", [_AgentId, QueueId]),
     send_agent_timeout(JObj, Call, QueueId).
 
--spec send_member_connect_req(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
-send_member_connect_req(CallId, AccountId, QueueId, MyQ, MyId) ->
+-spec send_member_connect_req(kz_term:ne_binary()
+                             ,kz_term:ne_binary()
+                             ,kz_term:ne_binary()
+                             ,kz_term:ne_binary()
+                             ,kz_term:ne_binary()
+                             ,pos_integer()
+                             ) -> 'ok'.
+send_member_connect_req(CallId, AccountId, QueueId, MyQ, MyId, RingTimeout) ->
     Req = props:filter_undefined(
             [{<<"Account-ID">>, AccountId}
             ,{<<"Queue-ID">>, QueueId}
             ,{<<"Process-ID">>, MyId}
-            ,{<<"Server-ID">>, MyQ}
             ,{<<"Call-ID">>, CallId}
-             | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+            ,{<<"Ring-Timeout">>, RingTimeout}
+             | kz_api:default_headers(MyQ, ?APP_NAME, ?APP_VERSION)
             ]),
     publish(Req, fun kapi_acdc_queue:publish_member_connect_req/1).
 
@@ -656,7 +661,6 @@ send_sync_req(MyQ, MyId, AccountId, QueueId, Type) ->
              ,{<<"Queue-ID">>, QueueId}
              ,{<<"Process-ID">>, MyId}
              ,{<<"Current-Strategy">>, Type}
-             ,{<<"Server-ID">>, MyQ}
               | kz_api:default_headers(MyQ, ?APP_NAME, ?APP_VERSION)
              ]),
     publish(Resp, fun kapi_acdc_queue:publish_sync_req/1).
