@@ -1218,8 +1218,8 @@ create_sip_endpoint(Endpoint, Properties, #clid{}=Clid, Call) ->
                       ,{<<"Ignore-Early-Media">>, get_ignore_early_media(Endpoint)}
                       ,{<<"Bypass-Media">>, get_bypass_media(Endpoint)}
                       ,{<<"Endpoint-Progress-Timeout">>, get_progress_timeout(Endpoint)}
-                      ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
-                      ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
+                      ,{<<"Endpoint-Timeout">>, get_timeout(Properties, Endpoint)}
+                      ,{<<"Endpoint-Delay">>, get_delay(Properties, Endpoint)}
                       ,{<<"Endpoint-ID">>, kz_doc:id(Endpoint)}
                       ,{<<"Codecs">>, get_codecs(Endpoint)}
                       ,{<<"Hold-Media">>, kz_attributes:moh_attributes(Endpoint, <<"media_id">>, Call)}
@@ -1297,9 +1297,9 @@ create_push_endpoint(Endpoint, Properties, Call) ->
         ,{<<"Ignore-Early-Media">>, get_ignore_early_media(Endpoint)}
         ,{<<"Bypass-Media">>, get_bypass_media(Endpoint)}
         ,{<<"Endpoint-Progress-Timeout">>, get_progress_timeout(Endpoint)}
-        ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
+        ,{<<"Endpoint-Timeout">>, get_timeout(Properties, Endpoint)}
         ,{<<"Endpoint-ID">>, kz_doc:id(Endpoint)}
-        ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
+        ,{<<"Endpoint-Delay">>, get_delay(Properties, Endpoint)}
         ,{<<"Codecs">>, get_codecs(Endpoint)}
         ,{<<"Hold-Media">>, kz_attributes:moh_attributes(Endpoint, <<"media_id">>, Call)}
         ,{<<"Presence-ID">>, kz_attributes:presence_id(Endpoint, Call)}
@@ -1413,8 +1413,8 @@ create_call_fwd_endpoint(Endpoint, Properties, Call) ->
       ,{<<"Ignore-Early-Media">>, IgnoreEarlyMedia}
       ,{<<"Bypass-Media">>, <<"false">>}
       ,{<<"Endpoint-Progress-Timeout">>, get_progress_timeout(Endpoint)}
-      ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
-      ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
+      ,{<<"Endpoint-Timeout">>, get_timeout(Properties, Endpoint)}
+      ,{<<"Endpoint-Delay">>, get_delay(Properties, Endpoint)}
       ,{<<"Presence-ID">>, kz_attributes:presence_id(Endpoint, Call)}
       ,{<<"Callee-ID-Name">>, Clid#clid.callee_name}
       ,{<<"Callee-ID-Number">>, Clid#clid.callee_number}
@@ -1462,8 +1462,8 @@ create_mobile_audio_endpoint(Endpoint, Properties, Call) ->
               ,{<<"To-Username">>, get_to_username(SIPSettings)}
               ,{<<"To-Realm">>, get_sip_realm(Endpoint, kapps_call:account_id(Call))}
               ,{<<"Ignore-Early-Media">>, <<"true">>}
-              ,{<<"Endpoint-Timeout">>, get_timeout(Endpoint, Properties)}
-              ,{<<"Endpoint-Delay">>, get_delay(Endpoint, Properties)}
+              ,{<<"Endpoint-Timeout">>, get_timeout(Properties, Endpoint)}
+              ,{<<"Endpoint-Delay">>, get_delay(Properties, Endpoint)}
               ,{<<"Presence-ID">>, kz_attributes:presence_id(Endpoint, Call)}
               ,{<<"Custom-SIP-Headers">>, generate_sip_headers(Endpoint, <<"mobile">>, Call)}
               ,{<<"Codecs">>, Codecs}
