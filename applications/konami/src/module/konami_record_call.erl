@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2022, 2600Hz
+%%% @copyright (C) 2010-2026, 2600Hz
 %%% @doc Record something
 %%% "data":{
 %%%   "action":["start","stop"] // one of these
@@ -27,12 +27,12 @@ handle(Data, Call) ->
 
 -spec handle(kz_json:object(), kapps_call:call(), kz_term:ne_binary()) ->
           kapps_call:call().
-handle(_Data, Call, <<"mask">>) ->
+handle(Data, Call, <<"mask">>) ->
     lager:debug("masking recording, see you on the other side"),
-    kapps_call:mask_recording(Call);
-handle(_Data, Call, <<"unmask">>) ->
+    lists:foldl(fun kapps_call:mask_recording/2, Call, recording_legs(Data, Call));
+handle(Data, Call, <<"unmask">>) ->
     lager:debug("unmasking recording, see you on the other side"),
-    kapps_call:unmask_recording(Call);
+    lists:foldl(fun kapps_call:unmask_recording/2, Call, recording_legs(Data, Call));
 handle(Data, Call, <<"start">>) ->
     lager:debug("starting recording, see you on the other side"),
     Result = save_record_param(Data, Call),
@@ -42,6 +42,22 @@ handle(_Data, Call, <<"stop">>) ->
     _ = kapps_call:stop_recording(Call),
     lager:debug("sent command to stop recording call"),
     Call.
+
+%%------------------------------------------------------------------------------
+%% @doc Legs whose recordings should be [un]masked. Endpoint recordings
+%% ("record_on_answer") live on the endpoint's own leg, which is the leg the
+%% DTMF came from when the internal user answered an inbound call, not this
+%% call's leg. Mask both so account and endpoint level recordings are covered.
+%% @end
+%%------------------------------------------------------------------------------
+-spec recording_legs(kz_json:object(), kapps_call:call()) -> kz_term:ne_binaries().
+recording_legs(Data, Call) ->
+    CallId = kapps_call:call_id(Call),
+    case kz_json:get_ne_binary_value(<<"dtmf_leg">>, Data) of
+        'undefined' -> [CallId];
+        CallId -> [CallId];
+        DTMFLeg -> [DTMFLeg, CallId]
+    end.
 
 -spec get_action(kz_term:api_ne_binary()) -> kz_term:ne_binary().
 get_action('undefined') -> <<"start">>;
