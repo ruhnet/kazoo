@@ -222,12 +222,12 @@ member_call_result_routing_key(AccountId, QueueId, CallId) ->
 %%------------------------------------------------------------------------------
 %% Member Connect Request
 %%------------------------------------------------------------------------------
--define(MEMBER_CONNECT_REQ_HEADERS, [<<"Account-ID">>, <<"Queue-ID">>, <<"Call-ID">>]).
+-define(MEMBER_CONNECT_REQ_HEADERS, [<<"Account-ID">>, <<"Queue-ID">>, <<"Call-ID">>, <<"Ring-Timeout">>]).
 -define(OPTIONAL_MEMBER_CONNECT_REQ_HEADERS, [<<"Process-ID">>]).
 -define(MEMBER_CONNECT_REQ_VALUES, [{<<"Event-Category">>, <<"member">>}
                                    ,{<<"Event-Name">>, <<"connect_req">>}
                                    ]).
--define(MEMBER_CONNECT_REQ_TYPES, []).
+-define(MEMBER_CONNECT_REQ_TYPES, [{<<"Ring-Timeout">>, fun kz_term:is_pos_integer/1}]).
 
 -spec member_connect_req(kz_term:api_terms()) ->
           {'ok', iolist()} |
@@ -263,12 +263,12 @@ member_connect_req_routing_key(AccountId, QID) ->
 %%------------------------------------------------------------------------------
 %% Member Connect Response
 %%------------------------------------------------------------------------------
--define(MEMBER_CONNECT_RESP_HEADERS, [<<"Agent-ID">>]).
+-define(MEMBER_CONNECT_RESP_HEADERS, [<<"Agent-ID">>, <<"Endpoints-Max-Ring-Timeout">>]).
 -define(OPTIONAL_MEMBER_CONNECT_RESP_HEADERS, [<<"Idle-Time">>, <<"Process-ID">>]).
 -define(MEMBER_CONNECT_RESP_VALUES, [{<<"Event-Category">>, <<"member">>}
                                     ,{<<"Event-Name">>, <<"connect_resp">>}
                                     ]).
--define(MEMBER_CONNECT_RESP_TYPES, []).
+-define(MEMBER_CONNECT_RESP_TYPES, [{<<"Endpoints-Max-Ring-Timeout">>, fun kz_term:is_pos_integer/1}]).
 
 -spec member_connect_resp(kz_term:api_terms()) ->
           {'ok', iolist()} |
@@ -300,7 +300,9 @@ member_connect_resp_v(JObj) ->
 -define(MEMBER_CONNECT_WIN_VALUES, [{<<"Event-Category">>, <<"member">>}
                                    ,{<<"Event-Name">>, <<"connect_win">>}
                                    ]).
--define(MEMBER_CONNECT_WIN_TYPES, [{<<"Record-Caller">>, fun kz_term:is_boolean/1}]).
+-define(MEMBER_CONNECT_WIN_TYPES, [{<<"Record-Caller">>, fun kz_term:is_boolean/1}
+                                  ,{<<"Ring-Timeout">>, fun kz_term:is_pos_integer/1}
+                                  ]).
 
 -spec member_connect_win(kz_term:api_terms()) ->
           {'ok', iolist()} |

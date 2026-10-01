@@ -97,6 +97,7 @@
 
 -define(RESOURCE_TYPE_AUDIO, <<"audio">>).
 
+-define(ENDPOINT_REFRESH_TIMEOUT, 5 * ?MILLISECONDS_IN_MINUTE).
 -define(NO_ENDPOINTS_PAUSE_TIME, kapps_config:get_integer(?CONFIG_CAT, <<"no_endpoints_pause_time">>, 15)).
 -define(NO_ENDPOINTS_PAUSE_MSG, <<"no device registered">>).
 
@@ -472,18 +473,17 @@ wait_for_listener(Supervisor, ServerRef, Props, IsThief) ->
         P when is_pid(P) ->
             lager:debug("listener retrieved: ~p", [P]),
 
-            {NextState, SyncRef} =
-                case props:get_value('skip_sync', Props) =:= 'true'
-                    orelse IsThief
-                of
-                    'true' -> {'ready', 'undefined'};
-                    _ ->
-                        gen_statem:cast(ServerRef, 'send_sync_event'),
-                        gen_statem:cast(ServerRef, 'load_endpoints'),
-                        {'sync', start_sync_timer(ServerRef)}
-                end,
-
-            gen_statem:cast(ServerRef, {'listener', P, NextState, SyncRef})
+            case props:get_value('skip_sync', Props) =:= 'true'
+                orelse IsThief
+            of
+                'true' ->
+                    gen_statem:cast(ServerRef, {'listener', P, 'ready', 'undefined'});
+                _ ->
+                    SyncRef = start_sync_timer(ServerRef),
+                    gen_statem:cast(ServerRef, {'listener', P, 'sync', SyncRef}),
+                    gen_statem:cast(ServerRef, 'send_sync_event'),
+                    gen_statem:cast(ServerRef, 'load_endpoints')
+            end
     end.
 
 %%------------------------------------------------------------------------------
@@ -506,9 +506,6 @@ wait('cast', {'listener', AgentListener, NextState, SyncRef}, State) ->
                                          ,sync_ref=SyncRef
                                          ,agent_listener_id=acdc_util:proc_id()
                                          }};
-wait('cast', 'send_sync_event', State) ->
-    gen_statem:cast(self(), 'send_sync_event'),
-    {'next_state', 'wait', State};
 wait('cast', Evt, State) ->
     handle_event(Evt, 'wait', State);
 wait({'call', From}, 'status', State) ->
@@ -607,11 +604,10 @@ ready('cast', {'sync_req', JObj}, #state{agent_listener=AgentListener}=State) ->
     acdc_agent_listener:send_sync_resp(AgentListener, 'ready', JObj),
     {'next_state', 'ready', State};
 ready('cast', {'member_connect_win', JObj, 'same_node'}, #state{agent_listener=AgentListener
-                                                       ,endpoints=OrigEPs
-                                                       ,account_id=AccountId
-                                                       ,agent_id=AgentId
-                                                       ,connect_failures=CF
-                                                       }=State) ->
+                                                               ,endpoints=EPs
+                                                               ,account_id=AccountId
+                                                               ,agent_id=AgentId
+                                                               }=State) ->
     Call = kapps_call:from_json(kz_json:get_value(<<"Call">>, JObj)),
     CallId = kapps_call:call_id(Call),
 
@@ -619,24 +615,22 @@ ready('cast', {'member_connect_win', JObj, 'same_node'}, #state{agent_listener=A
 
     WrapupTimer = kz_json:get_integer_value(<<"Wrapup-Timeout">>, JObj, 0),
     CallerExitKey = kz_json:get_value(<<"Caller-Exit-Key">>, JObj, <<"#">>),
-    QueueId = kz_json:get_value(<<"Queue-ID">>, JObj),
+    QueueId = kz_json:get_ne_binary_value(<<"Queue-ID">>, JObj),
 
     CDRUrl = cdr_url(JObj),
     RecordingUrl = recording_url(JObj),
 
     lager:debug("trying to ring agent ~s to connect to caller in queue ~s", [AgentId, QueueId]),
 
-    case get_endpoints(OrigEPs, Call, AgentId, QueueId) of
-        {'error', 'no_endpoints'} ->
+    case filter_registered_endpoints(EPs, AccountId, AgentId) of
+        [] ->
             lager:info("agent ~s has no endpoints; pausing agent", [AgentId]),
             pause(self(), ?NO_ENDPOINTS_PAUSE_TIME, ?NO_ENDPOINTS_PAUSE_MSG),
             acdc_agent_listener:member_connect_retry(AgentListener, JObj),
             {'next_state', 'paused', State};
-        {'error', _E} ->
-            lager:info("agent ~s can't take the call, skip me: ~p", [AgentId, _E]),
-            acdc_agent_listener:member_connect_retry(AgentListener, JObj),
-            {'next_state', 'ready', State#state{connect_failures=CF+1}};
-        {'ok', UpdatedEPs} ->
+        RegisteredEPs ->
+            UpdatedEPs = update_endpoints_from_connect_win(RegisteredEPs, JObj),
+
             acdc_util:bind_to_call_events(Call, AgentListener),
 
             %% Need to check if a callback is required to the caller
@@ -652,7 +646,7 @@ ready('cast', {'member_connect_win', JObj, 'same_node'}, #state{agent_listener=A
             {CIDNumber, CIDName} = acdc_util:caller_id(Call),
 
             acdc_agent_stats:agent_connecting(AccountId, AgentId, CallId, CIDName, CIDNumber),
-            lager:info("trying to ring agent ~s  endpoints(~p)", [AgentId, length(UpdatedEPs)]),
+            lager:info("trying to ring agent ~s registered endpoints (length ~b)", [AgentId, length(UpdatedEPs)]),
             lager:debug("notifications for the queue: ~p", [kz_json:get_value(<<"Notifications">>, JObj)]),
             {'next_state', NextState, State#state{wrapup_timeout=WrapupTimer
                                                  ,member_call=Call
@@ -660,13 +654,12 @@ ready('cast', {'member_connect_win', JObj, 'same_node'}, #state{agent_listener=A
                                                  ,member_call_start=kz_time:now()
                                                  ,member_call_queue_id=QueueId
                                                  ,caller_exit_key=CallerExitKey
-                                                 ,endpoints=UpdatedEPs
                                                  ,queue_notifications=kz_json:get_value(<<"Notifications">>, JObj)
                                                  }}
     end;
 ready('cast', {'member_connect_win', JObj, 'different_node'}, #state{agent_listener=AgentListener
-                                                            ,agent_id=AgentId
-                                                            }=State) ->
+                                                                    ,agent_id=AgentId
+                                                                    }=State) ->
     Call = kapps_call:from_json(kz_json:get_value(<<"Call">>, JObj)),
     CallId = kapps_call:call_id(Call),
 
@@ -700,13 +693,17 @@ ready('cast', {'member_connect_satisfied', _, _Node}, State) ->
     {'next_state', 'ready', State};
 
 ready('cast', {'member_connect_req', _}, #state{max_connect_failures=Max
-                                       ,connect_failures=Fails
-                                       }=State) when is_integer(Max), Fails >= Max ->
+                                               ,connect_failures=Fails
+                                               }=State) when is_integer(Max), Fails >= Max ->
     lager:info("agent has failed to connect ~b times, logging out", [Fails]),
     agent_logout(self()),
     {'next_state', 'paused', State};
-ready('cast', {'member_connect_req', JObj}, #state{agent_listener=AgentListener}=State) ->
-    acdc_agent_listener:member_connect_resp(AgentListener, JObj),
+ready('cast', {'member_connect_req', JObj}, #state{agent_listener=AgentListener
+                                                  ,endpoints=EPs
+                                                  }=State) ->
+    RingTimeout = kz_json:get_ne_integer_value(<<"Ring-Timeout">>, JObj),
+    EPsMaxRingTimeout = acdc_agent_util:endpoints_max_ring_timeout(EPs, RingTimeout),
+    acdc_agent_listener:member_connect_resp(AgentListener, JObj, EPsMaxRingTimeout),
     {'next_state', 'ready', State};
 ready('cast', {'originate_uuid', ACallId, ACtrlQ}, #state{agent_listener=AgentListener}=State) ->
     acdc_agent_listener:originate_uuid(AgentListener, ACallId, ACtrlQ),
@@ -2021,13 +2018,10 @@ handle_event({'refresh', AgentJObj}, StateName, #state{agent_listener=AgentListe
                                       ,AgentJObj
                                       ,StateName),
     {'next_state', StateName, State};
-handle_event('load_endpoints', StateName, #state{agent_listener='undefined'}=State) ->
-    lager:debug("agent proc not ready, not loading endpoints yet"),
-    gen_statem:cast(self(), 'load_endpoints'),
-    {'next_state', StateName, State};
 handle_event('load_endpoints', StateName, #state{agent_id=AgentId
                                                 ,account_id=AccountId
                                                 ,account_db=AccountDb
+                                                ,endpoints=EPs
                                                 }=State) ->
     Setters = [{fun kapps_call:set_account_id/2, AccountId}
               ,{fun kapps_call:set_account_db/2, AccountDb}
@@ -2040,9 +2034,10 @@ handle_event('load_endpoints', StateName, #state{agent_id=AgentId
     %% Inform us of things with us as owner
     catch gproc:reg(?OWNER_UPDATE_REG(AccountId, AgentId)),
 
-    case get_endpoints([], Call, AgentId, 'undefined') of
-        {'error', 'no_endpoints'} -> {'next_state', StateName, State};
-        {'ok', EPs} -> {'next_state', StateName, State#state{endpoints=EPs}};
+    case get_endpoints(EPs, Call, AccountId, AgentId) of
+        {'ok', EPs1} ->
+            erlang:send_after(?ENDPOINT_REFRESH_TIMEOUT, self(), 'load_endpoints'),
+            {'next_state', StateName, State#state{endpoints=EPs1}};
         {'error', E} -> {'stop', E, State}
     end;
 handle_event(_Event, StateName, State) ->
@@ -2099,6 +2094,8 @@ handle_info({'endpoint_created', EP}, StateName, #state{endpoints=EPs
                     {'next_state', StateName, State#state{endpoints=maybe_add_endpoint(EPId, EP, EPs, AccountId)}, 'hibernate'}
             end
     end;
+handle_info('load_endpoints'=Evt, StateName, State) ->
+    handle_event(Evt, StateName, State);
 handle_info(?NEW_CHANNEL_FROM(_CallId,_,_,_)=Evt, StateName, State) ->
     gen_statem:cast(self(), Evt),
     {'next_state', StateName, State};
@@ -2411,12 +2408,12 @@ find_extension(EP) ->
     [Ext, _] = binary:split(kz_json:get_value(<<"Presence-ID">>, EP), <<$@>>),
     Ext.
 
--spec find_endpoint_id(kz_json:object()) -> kz_term:api_binary().
+-spec find_endpoint_id(kzd_endpoint:endpoint()) -> kz_term:api_ne_binary().
 find_endpoint_id(EP) ->
     find_endpoint_id(EP, kz_doc:id(EP)).
 
--spec find_endpoint_id(kz_json:object(), kz_term:api_binary()) -> kz_term:api_binary().
-find_endpoint_id(EP, 'undefined') -> kz_json:get_value(<<"Endpoint-ID">>, EP);
+-spec find_endpoint_id(kzd_endpoint:endpoint(), kz_term:api_ne_binary()) -> kz_term:api_ne_binary().
+find_endpoint_id(EP, 'undefined') -> kzd_endpoint:id(EP);
 find_endpoint_id(_EP, EPId) -> EPId.
 
 -spec monitor_endpoint(kz_term:api_object(), kz_term:ne_binary()) -> _.
@@ -2475,29 +2472,67 @@ convert_to_endpoint(EPDoc) ->
         {'error', _} -> 'undefined'
     end.
 
--spec get_endpoints(kz_json:objects(), kapps_call:call(), kz_term:api_binary(), kz_term:api_binary()) ->
-          {'ok', kz_json:objects()} |
-          {'error', any()}.
-get_endpoints(OrigEPs, Call, AgentId, QueueId) ->
-    case catch acdc_util:get_endpoints(Call, AgentId) of
+-spec get_endpoints(kz_json:objects(), kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) ->
+                           {'ok', kz_json:objects()} | {'error', any()}.
+get_endpoints(OrigEPs, Call, AccountId, AgentId) ->
+    Params = kz_json:from_list([{<<"source">>, kz_term:to_binary(?MODULE)}
+                               ,{<<"can_call_self">>, 'true'}
+                               ]),
+    case catch kz_endpoints:by_owner_id(AgentId, Params, Call) of
         [] ->
             %% Survive couch connection issue by using last list of valid endpoints
-            case OrigEPs of
-                [] -> {'error', 'no_endpoints'};
-                _ -> {'ok', [kz_json:set_value([<<"Custom-Channel-Vars">>, <<"Queue-ID">>], QueueId, EP) || EP <- OrigEPs]}
-            end;
+            {'ok', OrigEPs};
         [_|_]=EPs ->
-            AccountId = kapps_call:account_id(Call),
-
             {Add, Rm} = changed_endpoints(OrigEPs, EPs),
             _ = [monitor_endpoint(EP, AccountId) || EP <- Add],
             _ = [unmonitor_endpoint(EP, AccountId) || EP <- Rm],
+            lager:debug("added ~b new endpoints", [length(Add)]),
+            lager:debug("removed ~b old endpoints", [length(Rm)]),
 
-            {'ok', [kz_json:set_value([<<"Custom-Channel-Vars">>, <<"Queue-ID">>], QueueId, EP) || EP <- EPs]};
+            {'ok', EPs};
         {'EXIT', E} ->
-            lager:debug("failed to load endpoints: ~p", [E]),
+            lager:error("failed to load endpoints: ~p", [E]),
             {'error', E}
     end.
+
+-spec filter_registered_endpoints(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary()) -> kz_json:objects().
+filter_registered_endpoints(EPs, AccountId, AgentId) ->
+    Realm = kzd_accounts:fetch_realm(AccountId),
+
+    Req = [{<<"Owner">>, AgentId}
+          ,{<<"Realm">>, Realm}
+          ,{<<"Fields">>, [<<"Authorizing-ID">>]}
+           | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+          ],
+
+    case kz_amqp_worker:call_collect(
+           Req, fun kapi_registration:publish_query_req/1, {'ecallmgr', 'true'}
+          )
+    of
+        {'error', Reason} ->
+            lager:error("failed to fetch registrations for ~s/~s: ~p", [AccountId, AgentId, Reason]),
+            [];
+        {_, JObjs} ->
+            AuthIDs = [kz_json:get_ne_binary_value(<<"Authorizing-ID">>, Registration)
+                       || JObj <- JObjs,
+                          kz_api:event_name(JObj) =:= <<"reg_query_resp">>,
+                          Registration <- kz_json:get_list_value(<<"Fields">>, JObj)
+                      ],
+            [EP || EP <- EPs, lists:member(find_endpoint_id(EP), AuthIDs)]
+    end.
+
+-spec update_endpoints_from_connect_win(kz_json:objects(), kz_json:object()) -> kz_json:objects().
+update_endpoints_from_connect_win(EPs, JObj) ->
+    QueueId = kz_json:get_ne_binary_value(<<"Queue-ID">>, JObj),
+    DefaultRingTimeout = kz_json:get_ne_integer_value(<<"Ring-Timeout">>, JObj),
+    UpdateQueueId = fun(EP) ->
+                            kz_json:set_value([<<"Custom-Channel-Vars">>, <<"Queue-ID">>], QueueId, EP)
+                    end,
+    EnsureRingTimeout = fun(EP) ->
+                                Timeout = kzd_endpoint:timeout(EP, DefaultRingTimeout),
+                                kzd_endpoint:set_timeout(EP, Timeout)
+                        end,
+    [UpdateQueueId(EnsureRingTimeout(EP)) || EP <- EPs].
 
 -spec return_to_state(non_neg_integer(), pos_integer() | 'infinity') -> 'paused' | 'ready'.
 return_to_state(_, 'infinity') ->
@@ -2649,22 +2684,12 @@ apply_state_updates(#state{agent_state_updates=Q
     apply_state_updates_fold({'next_state', FoldDefaultState, State#state{agent_state_updates=[]}}, lists:reverse(Q)).
 
 ready_or_not(#state{account_id=AccountId
-                    ,account_db = AccountDb
-                    ,agent_id=AgentId
+                   ,agent_id=AgentId
+                   ,endpoints=EPs
                    }) ->
-    Setters = [{fun kapps_call:set_account_id/2, AccountId} 
-              ,{fun kapps_call:set_account_db/2, AccountDb}
-              ,{fun kapps_call:set_owner_id/2, AgentId}
-              ,{fun kapps_call:set_resource_type/2, ?RESOURCE_TYPE_AUDIO}
-              ],
-
-    Call = kapps_call:exec(Setters, kapps_call:new()),
-    case catch acdc_util:get_endpoints(Call, AgentId) of
+    case filter_registered_endpoints(EPs, AccountId, AgentId) of
         [] -> 'not_ready';
-        [_|_] -> 'ready';
-        {'EXIT', E} ->
-            lager:error("failed to load endpoints: ~p", [E]),
-            'not_ready'
+        [_|_] -> 'ready'
     end.
 
 -spec apply_state_updates_fold({'next_state', atom(), state()}, list()) -> kz_term:handle_fsm_ret(state()).

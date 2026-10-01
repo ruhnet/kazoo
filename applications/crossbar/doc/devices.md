@@ -30,6 +30,7 @@ Key | Description | Type | Default | Required | Support Level
 `caller_id_options` | custom properties for configuring caller_id | `object()` |   | `false` |  
 `contact_list.exclude` | If set to true the device is excluded from the contact list | `boolean()` |   | `false` | `supported`
 `contact_list` | Contact List Parameters | `object()` | `{}` | `false` |  
+`delay` | Delay (in seconds) before ringing the device when part of a parallel bridge/originate | `integer()` |   | `false` |  
 `device_type` | Arbitrary device type used by the UI and billing system | `string()` |   | `false` |  
 `dial_plan` | A list of rules used to modify dialed numbers | [#/definitions/dialplans](#dialplans) |   | `false` |  
 `do_not_disturb.enabled` | Is do-not-disturb enabled for this device? | `boolean()` |   | `false` |  
@@ -38,6 +39,7 @@ Key | Description | Type | Default | Required | Support Level
 `exclude_from_queues` | Do not ring this device when calling user/agent in queue | `boolean()` | `false` | `false` |  
 `flags.[]` |   | `string()` |   | `false` | `supported`
 `flags` | Flags set by external applications | `array(string())` |   | `false` | `supported`
+`follow_me` | Determines if the device should receive incoming calls | `boolean()` | `true` | `false` |  
 `formatters` | Schema for request formatters | [#/definitions/formatters](#formatters) |   | `false` |  
 `hotdesk.users./^[a-zA-Z0-9]{32}$/` | user-specific hotdesk settings | `object()` |   | `false` |  
 `hotdesk.users` | The user(s) currently hotdesked into the device | `object()` |   | `false` |  
@@ -85,6 +87,7 @@ Key | Description | Type | Default | Required | Support Level
 `sip.username` | SIP authentication username | `string(2..32)` |   | `false` | `supported`
 `sip` | SIP Parameters | `object()` | `{}` | `false` |  
 `suppress_unregister_notifications` | When true disables deregister notifications | `boolean()` | `false` | `false` |  
+`timeout` | Default duration to ring the device | `integer()` |   | `false` |  
 `timezone` | Device's timezone | `string()` |   | `false` | `supported`
 
 ### call_recording

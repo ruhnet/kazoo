@@ -107,6 +107,11 @@
             },
             "type": "object"
         },
+        "delay": {
+            "description": "Delay (in seconds) before ringing the user's devices when part of a parallel bridge/originate",
+            "minimum": 1,
+            "type": "integer"
+        },
         "dial_plan": {
             "$ref": "dialplans",
             "description": "A list of rules used to modify dialed numbers"
@@ -283,6 +288,11 @@
                 }
             },
             "type": "object"
+        },
+        "timeout": {
+            "description": "Default duration (in seconds) to ring the user's devices",
+            "minimum": 1,
+            "type": "integer"
         },
         "timezone": {
             "description": "User's timezone",

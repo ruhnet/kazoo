@@ -24,6 +24,7 @@
         ,changed/2, find_most_recent_fold/3
 
         ,agent_priority/1
+        ,endpoints_max_ring_timeout/1, endpoints_max_ring_timeout/2
         ]).
 
 -include("acdc.hrl").
@@ -420,3 +421,13 @@ changed([F|From], To, Add, Rm) ->
 agent_priority(AgentJObj) ->
     -1 * kz_json:get_integer_value(<<"acdc_agent_priority">>, AgentJObj, 0).
 
+-spec endpoints_max_ring_timeout(kz_json:objects()) -> pos_integer().
+endpoints_max_ring_timeout(EPs) -> endpoints_max_ring_timeout(EPs, 10).
+
+-spec endpoints_max_ring_timeout(kz_json:objects(), pos_integer()) -> pos_integer().
+endpoints_max_ring_timeout(EPs, DefaultTimeout) ->
+    lists:max([DefaultTimeout | [endpoint_ring_timeout(EP, DefaultTimeout) || EP <- EPs]]).
+
+-spec endpoint_ring_timeout(kz_json:object(), pos_integer()) -> pos_integer().
+endpoint_ring_timeout(EP, DefaultTimeout) ->
+    kzd_endpoint:delay(EP, 0) + kzd_endpoint:timeout(EP, DefaultTimeout).
