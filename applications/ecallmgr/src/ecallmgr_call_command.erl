@@ -1,8 +1,9 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2022, 2600Hz
+%%% @copyright (C) 2010-2026, 2600Hz
 %%% @doc Execute call commands
 %%% @author James Aimonetti
 %%% @author Karl Anderson
+%%% @author Ruel Tmeizeh
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(ecallmgr_call_command).
@@ -198,8 +199,7 @@ get_fs_app(Node, UUID, JObj, <<"record">>) ->
             Vars = lists:foldl(fun(F, V) -> F(V) end, [], Routines),
             _ = ecallmgr_fs_command:set(Node, UUID, Vars),
 
-            MediaName = kz_json:get_value(<<"Media-Name">>, JObj),
-            RecordingName = ecallmgr_util:recording_filename(MediaName),
+            RecordingName = recording_filename(JObj),
             RecArg = list_to_binary([RecordingName, " "
                                     ,kz_json:get_string_value(<<"Time-Limit">>, JObj, "20"), " "
                                     ,kz_json:get_string_value(<<"Silence-Threshold">>, JObj, "500"), " "
@@ -218,8 +218,7 @@ get_fs_app(Node, UUID, JObj, <<"store">>) ->
     case kapi_dialplan:store_v(JObj) of
         'false' -> {'error', <<"store failed to execute as JObj did not validate">>};
         'true' ->
-            MediaName = kz_json:get_value(<<"Media-Name">>, JObj),
-            RecordingName = ecallmgr_util:recording_filename(MediaName),
+            RecordingName = recording_filename(JObj),
             lager:debug("streaming media ~s", [RecordingName]),
             case kz_json:get_value(<<"Media-Transfer-Method">>, JObj) of
                 <<"put">> ->
@@ -243,8 +242,7 @@ get_fs_app(Node, UUID, JObj, <<"store_vm">>) ->
     case kapi_dialplan:store_vm_v(JObj) of
         'false' -> {'error', <<"store failed to execute as JObj did not validate">>};
         'true' ->
-            MediaName = kz_json:get_value(<<"Media-Name">>, JObj),
-            RecordingName = ecallmgr_util:recording_filename(MediaName),
+            RecordingName = recording_filename(JObj),
             lager:debug("streaming media ~s", [RecordingName]),
             case kz_json:get_value(<<"Media-Transfer-Method">>, JObj) of
                 <<"put">> ->
@@ -1495,25 +1493,18 @@ record_call(Node, UUID, JObj) ->
     record_call(Node, UUID, Action, JObj).
 
 -spec record_call(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> fs_app().
-record_call(_Node, _UUID, <<"mask">>, JObj) ->
-    RecordingName = case kz_json:get_ne_binary_value(<<"Media-Name">>, JObj) of
-                        'undefined' -> <<"${media_recordings[0]}">>;
-                        MediaName -> ecallmgr_util:recording_filename(MediaName)
-                    end,
-    {<<"record_session_mask">>, RecordingName};
-record_call(_Node, _UUID, <<"unmask">>, JObj) ->
-    RecordingName = case kz_json:get_ne_binary_value(<<"Media-Name">>, JObj) of
-                        'undefined' -> <<"${media_recordings[0]}">>;
-                        MediaName -> ecallmgr_util:recording_filename(MediaName)
-                    end,
-    {<<"record_session_unmask">>, RecordingName};
+record_call(Node, UUID, <<"mask">>, JObj) ->
+    RecordingName = recording_filename(JObj, <<"${media_recordings[0]}">>),
+    mask_record_call(Node, UUID, <<"mask">>, RecordingName);
+record_call(Node, UUID, <<"unmask">>, JObj) ->
+    RecordingName = recording_filename(JObj, <<"${media_recordings[0]}">>),
+    mask_record_call(Node, UUID, <<"unmask">>, RecordingName);
 record_call(Node, UUID, <<"start">>, JObj) ->
     Vars = record_call_vars(JObj),
     Args = ecallmgr_util:process_fs_kv(Node, UUID, Vars, 'set'),
     AppArgs = ecallmgr_util:fs_args_to_binary(Args),
 
-    MediaName = kz_json:get_ne_binary_value(<<"Media-Name">>, JObj),
-    RecordingName = ecallmgr_util:recording_filename(MediaName),
+    RecordingName = recording_filename(JObj),
     RecodingBaseName = filename:basename(RecordingName),
     RecordingId = kz_json:get_ne_binary_value(<<"Media-Recording-ID">>, JObj),
     TimeLimit = record_call_limit(JObj),
@@ -1526,11 +1517,52 @@ record_call(Node, UUID, <<"start">>, JObj) ->
     ,{<<"record_session">>, RecordArg}
     ];
 record_call(_Node, _UUID, <<"stop">>, JObj) ->
-    RecordingName = case kz_json:get_ne_binary_value(<<"Media-Name">>, JObj) of
-                        'undefined' -> <<"${media_recordings[0]}">>;
-                        MediaName -> ecallmgr_util:recording_filename(MediaName)
-                    end,
+    RecordingName = recording_filename(JObj, <<"${media_recordings[0]}">>),
     {<<"stop_record_session">>, RecordingName}.
+
+%%------------------------------------------------------------------------------
+%% @doc Mask/unmask a recording via the `uuid_record' API instead of
+%% executing `record_session_mask' as a dialplan application.
+%%
+%% Executing a dialplan application on the channel (sendmsg/execute) queues a
+%% private event on it. If the channel is currently hearing hold music because
+%% its bridged peer put it on hold, FreeSWITCH runs that event nested inside
+%% the hold-music broadcast and, on completion, clears CF_BROADCAST. When the
+%% peer later unholds, switch_channel_stop_broadcast/1 sees no CF_BROADCAST
+%% and does nothing, so the hold music never stops. Using this uuid_record API
+%% method means the command runs outside the channel's thread and does not
+%% touch the broadcast state, and thush shouldn't interfere with hold.
+%%
+%% `expand uuid:<uuid>' is used so `${media_recordings[0]}' is still resolved
+%% against the target channel when no Media-Name is supplied.
+%% @end
+%%------------------------------------------------------------------------------
+-spec mask_record_call(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) ->
+          {'return', kz_term:ne_binary() | 'error'}.
+mask_record_call(Node, UUID, Action, RecordingName) ->
+    Args = list_to_binary(["uuid:", UUID, " uuid_record ", UUID, " ", Action, " ", RecordingName]),
+    lager:debug("execute on node ~s: expand(~s)", [Node, Args]),
+    case freeswitch:api(Node, 'expand', kz_term:to_list(Args)) of
+        {'ok', <<"+OK", _/binary>>} ->
+            lager:debug("~s of recording on ~s succeeded", [Action, UUID]),
+            {'return', <<"ok">>};
+        {'ok', Resp} ->
+            lager:info("~s of recording on ~s failed: ~s", [Action, UUID, Resp]),
+            {'return', 'error'};
+        {'error', _Reason} ->
+            lager:info("~s of recording on ~s failed: ~p", [Action, UUID, _Reason]),
+            {'return', 'error'}
+    end.
+
+-spec recording_filename(kz_json:object()) -> kz_term:ne_binary().
+recording_filename(JObj) -> recording_filename(JObj, 'undefined').
+
+-spec recording_filename(kz_json:object(), kz_term:api_ne_binary()) -> kz_term:ne_binary().
+recording_filename(JObj, Default) ->
+    case kz_json:get_ne_binary_value(<<"Media-Name">>, JObj) of
+        'undefined' -> Default;
+        MediaName -> ecallmgr_util:recording_filename(MediaName)
+    end.
 
 -spec record_call_limit(kz_json:object()) -> integer().
 record_call_limit(JObj) ->

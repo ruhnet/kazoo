@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2022, 2600Hz
+%%% @copyright (C) 2010-2026, 2600Hz
 %%% @doc Various utilities specific to ecallmgr. More general utilities go
 %%% in kazoo_util.erl
 %%%
@@ -1363,8 +1363,11 @@ fax_filename(UUID) ->
                   ,<<(kz_amqp_util:encode(UUID))/binary, Ext/binary>>
                   ]).
 
--spec recording_filename(kz_term:ne_binary()) -> file:filename_all().
+-spec recording_filename(kz_term:api_ne_binary()) -> file:filename_all().
 recording_filename(<<"local_stream://", MediaName/binary>>) -> recording_filename(MediaName);
+recording_filename('undefined') ->
+    UUID = kz_binary:rand_hex(16),
+    recording_filename(<<"unspecified_media_", UUID/binary>>);
 recording_filename(MediaName) ->
     Ext = recording_extension(MediaName),
     RootName = filename:basename(MediaName, Ext),
