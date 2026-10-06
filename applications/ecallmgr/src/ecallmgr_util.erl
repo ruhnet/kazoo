@@ -277,7 +277,7 @@ get_sip_from(Props) ->
 
 -spec get_sip_from(kz_term:proplist(), kz_term:api_binary()) -> kz_term:ne_binary().
 get_sip_from(Props, <<"outbound">>) ->
-    Num = props:get_first_defined([<<"Other-Leg-RDNIS">>
+    Num = first_defined_from_user([<<"Other-Leg-RDNIS">>
                                   ,<<"Other-Leg-Caller-ID-Number">>
                                   ,<<"variable_sip_from_user">>
                                   ,<<"variable_sip_from_uri">>
@@ -301,6 +301,22 @@ get_sip_from(Props, _) ->
                            ,Default
                            ).
 
+%% Other-Leg-* is the bridge partner's raw FreeSWITCH caller profile.
+%% When a leg is originated and then joined to an existing call (ACDC's
+%% originate + intercept), that profile can carry the placeholder
+%% "unknown" even though the real number is available further down the
+%% list, so we skip placeholders rather than stopping on them:
+-spec first_defined_from_user(kz_term:ne_binaries(), kz_term:proplist(), kz_term:ne_binary()) -> kz_term:ne_binary().
+first_defined_from_user([], _Props, Default) -> Default;
+first_defined_from_user([Key|Keys], Props, Default) ->
+    case props:get_value(Key, Props) of
+        <<"@",_/binary>> -> first_defined_from_user(Keys, Props, Default); %% empty from user
+        <<"unknown@",_/binary>> -> first_defined_from_user(Keys, Props, Default);
+        <<From/binary>> -> From;
+        _ -> first_defined_from_user(Keys, Props, Default)
+    end.
+
+-spec get_sip_from_realm(kz_term:proplist()) -> kz_term:ne_binary().
 get_sip_from_realm(Props) ->
     case kzd_freeswitch:from_realm(Props) of
         'undefined' -> ?DEFAULT_REALM;
