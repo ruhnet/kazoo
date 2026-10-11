@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2022, 2600Hz
+%%% @copyright (C) 2012-2026, 2600Hz
 %%% @doc Handle processing of the pivot call
 %%% @author James Aimonetti
 %%% @end
@@ -204,6 +204,9 @@ handle_cast({'request', Uri, Method, Params}
                         ,call=Call2
                         }
             };
+        {'stop', Call2} -> %% added this case in order to grab the call which may have logging KV on it (such as timeout).
+            publish_failed(Call2, RequesterQ),
+            {'stop', 'normal', State};
         _ ->
             publish_failed(Call, RequesterQ),
             {'stop', 'normal', State}
@@ -289,7 +292,8 @@ handle_info({'http', {ReqId, {'error', Error}}}
                   ,requester_queue=RequesterQ
                   }=State) ->
     lager:info("recv error ~p : collected: ~s", [Error, lists:reverse(_RespBody)]),
-    publish_failed(Call, RequesterQ),
+    Call1 = kapps_call:kvs_store(<<"pivot_err">>, {'recv_error', Error}, Call),
+    publish_failed(Call1, RequesterQ),
     {'stop', 'error', State};
 
 handle_info({'http', {ReqId, 'stream', Chunk}}
@@ -339,7 +343,8 @@ handle_info({'http', {ReqId, {{_, StatusCode, _}, RespHeaders, RespBody}}}
                   }=State)
   when (StatusCode - 400) < 100 ->
     lager:info("recv client failure status code ~p", [StatusCode]),
-    publish_failed(Call, RequesterQ),
+    Call1 = kapps_call:kvs_store(<<"pivot_err">>, {'recv_statuscode', StatusCode}, Call),
+    publish_failed(Call1, RequesterQ),
     maybe_debug_resp(ShouldDebug, Call, kz_term:to_binary(StatusCode), RespHeaders, RespBody),
     {'stop', 'normal', State};
 handle_info({'http', {ReqId, {{_, StatusCode, _}, RespHeaders, RespBody}}}
@@ -350,7 +355,8 @@ handle_info({'http', {ReqId, {{_, StatusCode, _}, RespHeaders, RespBody}}}
                   }=State)
   when (StatusCode - 500) < 100 ->
     lager:info("recv server failure status code ~p", [StatusCode]),
-    publish_failed(Call, RequesterQ),
+    Call1 = kapps_call:kvs_store(<<"pivot_err">>, {'recv_statuscode', StatusCode}, Call),
+    publish_failed(Call1, RequesterQ),
     maybe_debug_resp(ShouldDebug, Call, kz_term:to_binary(StatusCode), RespHeaders, RespBody),
     {'stop', 'normal', State};
 
@@ -367,7 +373,8 @@ handle_info({'DOWN', Ref, 'process', Pid, Reason}
                   ,requester_queue=RequesterQ
                   }=State) ->
     lager:info("response pid ~p(~p) down: ~p", [Pid, Ref, Reason]),
-    publish_failed(Call, RequesterQ),
+    Call1 = kapps_call:kvs_store(<<"pivot_err">>, {'pid_down', Reason}, Call),
+    publish_failed(Call1, RequesterQ),
     {'stop', 'normal', State};
 handle_info(_Info, State) ->
     lager:debug("unhandled message: ~p", [_Info]),
@@ -442,8 +449,9 @@ send(Call, Uri, Method, ReqHdrs, ReqBody, TimeoutMs, Debug) ->
             lager:debug("response coming in asynchronously to ~p(max ~p ms)", [ReqId, TimeoutMs]),
             {'ok', ReqId, Call};
         {'error', _Reason} ->
+            Call1 = kapps_call:kvs_store(<<"pivot_err">>, {'error', _Reason}, Call),
             lager:debug("error with req: ~p", [_Reason]),
-            {'stop', Call}
+            {'stop', Call1}
     end.
 
 -spec normalize_resp_headers(kz_term:proplist()) -> kz_term:proplist().
@@ -510,14 +518,18 @@ process_resp(RequesterQ, Call, CT, RespBody) ->
             {'stop', Call};
         'throw':{'error', 'unrecognized_cmds'} ->
             lager:info("no translators recognize the supplied commands: ~s", [RespBody]),
-            publish_failed(Call, RequesterQ),
+            Call1 = kapps_call:kvs_store(<<"pivot_err">>, {'error', 'unrecognized_cmds'}, Call),
+            publish_failed(Call1, RequesterQ),
             {'stop', Call}
     end.
 
 -spec publish_failed(kapps_call:call(), kz_term:ne_binary()) -> 'ok'.
 publish_failed(Call, RequesterQ) ->
+    CallId = kapps_call:call_id(Call),
+    PivotErr = kapps_call:kvs_fetch(<<"pivot_err">>, Call),
+    lager:notice("pivot failed with '~p' for call_id ~s", [PivotErr, CallId]),
     PubFun = fun(P) -> kapi_pivot:publish_failed(RequesterQ, P) end,
-    kz_amqp_worker:cast([{<<"Call-ID">>, kapps_call:call_id(Call)}
+    kz_amqp_worker:cast([{<<"Call-ID">>, CallId}
                          | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
                         ]
                        ,PubFun
