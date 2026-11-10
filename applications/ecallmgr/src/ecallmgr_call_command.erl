@@ -3,7 +3,7 @@
 %%% @doc Execute call commands
 %%% @author James Aimonetti
 %%% @author Karl Anderson
-%%% @author Ruel Tmeizeh
+%%% @author Ruel Tmeizeh (for WeUC Ltd.)
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(ecallmgr_call_command).
@@ -1494,11 +1494,9 @@ record_call(Node, UUID, JObj) ->
 
 -spec record_call(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> fs_app().
 record_call(Node, UUID, <<"mask">>, JObj) ->
-    RecordingName = recording_filename(JObj, <<"${media_recordings[0]}">>),
-    mask_record_call(Node, UUID, <<"mask">>, RecordingName);
+    mask_record_call(Node, UUID, <<"mask">>, recording_filename(JObj));
 record_call(Node, UUID, <<"unmask">>, JObj) ->
-    RecordingName = recording_filename(JObj, <<"${media_recordings[0]}">>),
-    mask_record_call(Node, UUID, <<"unmask">>, RecordingName);
+    mask_record_call(Node, UUID, <<"unmask">>, recording_filename(JObj));
 record_call(Node, UUID, <<"start">>, JObj) ->
     Vars = record_call_vars(JObj),
     Args = ecallmgr_util:process_fs_kv(Node, UUID, Vars, 'set'),
@@ -1531,33 +1529,64 @@ record_call(_Node, _UUID, <<"stop">>, JObj) ->
 %% peer later unholds, switch_channel_stop_broadcast/1 sees no CF_BROADCAST
 %% and does nothing, so the hold music never stops. Using this uuid_record API
 %% method means the command runs outside the channel's thread and does not
-%% touch the broadcast state, and thush shouldn't interfere with hold.
+%% touch the broadcast state, and thus shouldn't interfere with hold.
 %%
-%% `expand uuid:<uuid>' is used so `${media_recordings[0]}' is still resolved
-%% against the target channel when no Media-Name is supplied.
+%% To use ${media_recordings[0]} for the file to operate on, we first need to
+%% fetch it from FreeSwitch using `uuid_getvar', and then we can run the
+%% `uuid_record' command to do the masking. Tried using `expand' to do it in
+%% one go, but mod_kazoo's kazoo_api_execute() is not safe for nested commands
+%% like that and results in a crash.
+%% And mod_kazoo pre-expands ${...} in API arguments against an empty event,
+%% so channel variables cannot be referenced inline; we lookup the path as a
+%% separate command instead.
 %% @end
 %%------------------------------------------------------------------------------
--spec mask_record_call(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) ->
+-spec mask_record_call(atom(), kz_term:ne_binary(), kz_term:ne_binary(), kz_term:api_ne_binary()) ->
           {'return', kz_term:ne_binary() | 'error'}.
+mask_record_call(Node, UUID, Action, 'undefined') ->
+    case current_recording_path(Node, UUID) of
+        'undefined' ->
+            lager:info("no recording found on ~s to ~s", [UUID, Action]),
+            {'return', 'error'};
+        Path -> mask_record_call(Node, UUID, Action, Path)
+    end;
 mask_record_call(Node, UUID, Action, RecordingName) ->
-    Args = list_to_binary(["uuid:", UUID, " uuid_record ", UUID, " ", Action, " ", RecordingName]),
-    lager:debug("execute on node ~s: expand(~s)", [Node, Args]),
-    case freeswitch:api(Node, 'expand', kz_term:to_list(Args)) of
+    Args = list_to_binary([UUID, " ", Action, " ", RecordingName]),
+    lager:debug("execute on node ~s: uuid_record(~s)", [Node, Args]),
+    case freeswitch:api(Node, 'uuid_record', kz_term:to_list(Args)) of
         {'ok', <<"+OK", _/binary>>} ->
-            lager:debug("~s of recording on ~s succeeded", [Action, UUID]),
+            lager:debug("~s of recording ~s on ~s succeeded", [Action, RecordingName, UUID]),
             {'return', <<"ok">>};
         {'ok', Resp} ->
-            lager:info("~s of recording on ~s failed: ~s", [Action, UUID, Resp]),
+            lager:info("~s of recording ~s on ~s failed: ~s", [Action, RecordingName, UUID, Resp]),
             {'return', 'error'};
         {'error', _Reason} ->
-            lager:info("~s of recording on ~s failed: ~p", [Action, UUID, _Reason]),
+            lager:info("~s of recording ~s on ~s failed: ~p", [Action, RecordingName, UUID, _Reason]),
             {'return', 'error'}
     end.
 
--spec recording_filename(kz_json:object()) -> kz_term:ne_binary().
+%% record_call "start" unshifts each new file onto media_recordings, so
+%% index 0 is the most recent recording on this leg
+-spec current_recording_path(atom(), kz_term:ne_binary()) -> kz_term:api_ne_binary().
+current_recording_path(Node, UUID) ->
+    Args = <<UUID/binary, " media_recordings[0]">>,
+    case freeswitch:api(Node, 'uuid_getvar', kz_term:to_list(Args)) of
+        {'ok', Value} -> recording_path_from_var(kz_binary:strip(Value));
+        {'error', _Reason} ->
+            lager:debug("failed to read media_recordings on ~s: ~p", [UUID, _Reason]),
+            'undefined'
+    end.
+
+-spec recording_path_from_var(binary()) -> kz_term:api_ne_binary().
+recording_path_from_var(<<>>) -> 'undefined';
+recording_path_from_var(<<"_undef_">>) -> 'undefined';
+recording_path_from_var(<<"-ERR", _/binary>>) -> 'undefined';
+recording_path_from_var(Path) -> Path.
+
+-spec recording_filename(kz_json:object()) -> kz_term:api_ne_binary().
 recording_filename(JObj) -> recording_filename(JObj, 'undefined').
 
--spec recording_filename(kz_json:object(), kz_term:api_ne_binary()) -> kz_term:ne_binary().
+-spec recording_filename(kz_json:object(), kz_term:api_ne_binary()) -> kz_term:api_ne_binary().
 recording_filename(JObj, Default) ->
     case kz_json:get_ne_binary_value(<<"Media-Name">>, JObj) of
         'undefined' -> Default;
