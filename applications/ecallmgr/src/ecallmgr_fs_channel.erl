@@ -365,7 +365,7 @@ channel_cavs(JObj) -> kz_json:get_list_value(<<"custom_application_vars">>, JObj
 %%% @doc Update channel properties (singular or a list of them).
 %%% Explicitly matched properties (in binary form) are listed first and are
 %%% directly processed with update_channel/2. If a property is received that
-%%% is not explitly matched as a binary, the update is processed with
+%%% is not explicitly matched as a binary, the update is processed with
 %%% update_channel/3 which searches the record for the specified property after
 %%% converting it to an atom.
 %%% @end
@@ -375,20 +375,32 @@ update_channel(UUID, {K,V}) ->
     update_channel(UUID, [{K, V}]);
 %%% Explicit channel property matches:
 update_channel(UUID, [{<<"is_onhold">>,V}]) ->
-    ecallmgr_fs_channels:updates(UUID, [{#channel.is_onhold, V}]);
+    HoldV = try kz_term:to_boolean(V)
+            catch _:_ -> 'error'
+            end,
+    case is_boolean(HoldV) of
+        'true' -> ecallmgr_fs_channels:updates(UUID, [{#channel.is_onhold, HoldV}]);
+        _ -> lager:info("invalid value '~p' supplied for is_onhold property; ignoring", [V])
+    end;
 %%% Variable channel property not explicitly matched above:
 update_channel(UUID, UnformattedUpdates) ->
     update_channel(UUID, UnformattedUpdates, []).
 
--spec update_channel(kz_term:ne_binary(), kz_term:proplist(), kz_term:proplist()) -> 'ok'.
+-spec update_channel(kz_term:ne_binary(), kz_term:proplist(), channel_updates()) -> 'ok'.
 update_channel(_, [], []) -> 'ok';
-update_channel(UUID, [], Updates) -> ecallmgr_fs_channels:updates(UUID, Updates); % all updates are now formatted
+update_channel(UUID, [], Updates) -> ecallmgr_fs_channels:updates(UUID, Updates); % all updates are now processed
 update_channel(UUID, [{ChannelProperty, Value}|Rest], Updates) ->
     case find_channel_position(ChannelProperty) of
         'not_found' ->
             lager:info("invalid channel property '~p' supplied for update; ignoring", [ChannelProperty]),
             update_channel(UUID, Rest, Updates);
-        KeyPosition -> update_channel(UUID, Rest, [{KeyPosition, Value} | Updates])
+        KeyPosition when KeyPosition =:= #channel.uuid % don't allow change uuid since it's the ETS key of channel
+                         orelse KeyPosition =:= #channel.node % there are dedicated funcs for changing node
+                         orelse KeyPosition =:= #channel.former_node ->
+            lager:debug("channel property '~p' disallowed from update; ignoring", [ChannelProperty]),
+            update_channel(UUID, Rest, Updates);
+        KeyPosition ->
+            update_channel(UUID, Rest, [{KeyPosition, Value} | Updates])
     end.
 
 %%%-----------------------------------------------------------------------------
